@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: write # For fixing formatting
       id-token: write # For OIDC publishing
+      pull-requests: write # For creating release PRs
 
     steps:
       - name: Checkout repo
