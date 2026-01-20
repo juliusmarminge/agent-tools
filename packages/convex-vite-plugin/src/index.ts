@@ -161,10 +161,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
   const projectDir = options.projectDir ?? process.cwd();
   const convexDir = options.convexDir ?? "convex";
-  const watchPatterns = options.watch?.patterns ?? [
-    `${convexDir}/*.ts`,
-    `${convexDir}/**/*.ts`,
-  ];
+  const watchPatterns = options.watch?.patterns ?? [`${convexDir}/*.ts`, `${convexDir}/**/*.ts`];
   const ignorePatterns = options.watch?.ignore ?? [
     `${convexDir}/_generated/**`,
     `${convexDir}/_generated/*.ts`,

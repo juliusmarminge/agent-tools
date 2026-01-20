@@ -49,23 +49,23 @@ function App() {
 
 All options are optional. The plugin auto-generates keys and finds available ports by default.
 
-| Option           | Type                                                                       | Default                                      | Description                                                 |
-| ---------------- | -------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------- |
-| `instanceName`   | `string`                                                                   | `"convex-local"`                             | The instance name for the Convex backend                    |
-| `projectDir`     | `string`                                                                   | `process.cwd()`                              | The project directory containing the Convex functions       |
-| `convexDir`      | `string`                                                                   | `"convex"`                                   | The directory containing Convex functions (relative to projectDir) |
-| `reset`          | `boolean`                                                                  | `false`                                      | Reset backend state before starting (delete existing data)  |
-| `envVars`        | `Record<string, string>` or `(vitePort: number) => Record<string, string>` | -                                            | Environment variables to set on the backend                 |
-| `onReady`        | `ConvexFunctionCall[]`                                                     | -                                            | Functions to run after backend is ready (e.g., seed scripts)|
-| `stdio`          | `"inherit"` or `"ignore"`                                                  | `"ignore"`                                   | How to handle stdio from the backend process                |
+| Option         | Type                                                                       | Default          | Description                                                        |
+| -------------- | -------------------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------ |
+| `instanceName` | `string`                                                                   | `"convex-local"` | The instance name for the Convex backend                           |
+| `projectDir`   | `string`                                                                   | `process.cwd()`  | The project directory containing the Convex functions              |
+| `convexDir`    | `string`                                                                   | `"convex"`       | The directory containing Convex functions (relative to projectDir) |
+| `reset`        | `boolean`                                                                  | `false`          | Reset backend state before starting (delete existing data)         |
+| `envVars`      | `Record<string, string>` or `(vitePort: number) => Record<string, string>` | -                | Environment variables to set on the backend                        |
+| `onReady`      | `ConvexFunctionCall[]`                                                     | -                | Functions to run after backend is ready (e.g., seed scripts)       |
+| `stdio`        | `"inherit"` or `"ignore"`                                                  | `"ignore"`       | How to handle stdio from the backend process                       |
 
 ### File Watching
 
-| Option             | Type       | Default                              | Description                            |
-| ------------------ | ---------- | ------------------------------------ | -------------------------------------- |
-| `watch.patterns`   | `string[]` | `["<convexDir>/*.ts", "<convexDir>/**/*.ts"]` | Glob patterns to watch        |
-| `watch.ignore`     | `string[]` | `["<convexDir>/_generated/**"]`      | Glob patterns to ignore                |
-| `watch.debounceMs` | `number`   | `500`                                | Debounce delay in milliseconds         |
+| Option             | Type       | Default                                       | Description                    |
+| ------------------ | ---------- | --------------------------------------------- | ------------------------------ |
+| `watch.patterns`   | `string[]` | `["<convexDir>/*.ts", "<convexDir>/**/*.ts"]` | Glob patterns to watch         |
+| `watch.ignore`     | `string[]` | `["<convexDir>/_generated/**"]`               | Glob patterns to ignore        |
+| `watch.debounceMs` | `number`   | `500`                                         | Debounce delay in milliseconds |
 
 ## Environment Variables
 
@@ -155,40 +155,40 @@ These options are for advanced use cases and generally don't need to be changed.
 
 ### Port Configuration
 
-| Option          | Type     | Default              | Description                                      |
-| --------------- | -------- | -------------------- | ------------------------------------------------ |
-| `port`          | `number` | dynamically assigned | Port for the Convex backend                      |
-| `siteProxyPort` | `number` | dynamically assigned | Port for the Convex site proxy / HTTP actions    |
+| Option          | Type     | Default              | Description                                   |
+| --------------- | -------- | -------------------- | --------------------------------------------- |
+| `port`          | `number` | dynamically assigned | Port for the Convex backend                   |
+| `siteProxyPort` | `number` | dynamically assigned | Port for the Convex site proxy / HTTP actions |
 
 ### Authentication Keys
 
 Keys are auto-generated and persisted across restarts. Only provide these if you need to use specific keys.
 
-| Option           | Type     | Default        | Description                                    |
-| ---------------- | -------- | -------------- | ---------------------------------------------- |
-| `instanceSecret` | `string` | auto-generated | The instance secret for the Convex backend     |
+| Option           | Type     | Default        | Description                                       |
+| ---------------- | -------- | -------------- | ------------------------------------------------- |
+| `instanceSecret` | `string` | auto-generated | The instance secret for the Convex backend        |
 | `adminKey`       | `string` | auto-generated | The admin key for authenticating with the backend |
 
 ### State Management
 
-| Option          | Type     | Default     | Description                                                        |
-| --------------- | -------- | ----------- | ------------------------------------------------------------------ |
-| `stateIdSuffix` | `string` | -           | Suffix for unique backend instances (when cwd and branch are same) |
+| Option          | Type     | Default | Description                                                        |
+| --------------- | -------- | ------- | ------------------------------------------------------------------ |
+| `stateIdSuffix` | `string` | -       | Suffix for unique backend instances (when cwd and branch are same) |
 
 ### Timeouts
 
-| Option               | Type     | Default  | Description                                     |
-| -------------------- | -------- | -------- | ----------------------------------------------- |
-| `deployTimeout`      | `number` | `60000`  | Timeout for deploy operations in milliseconds   |
-| `healthCheckTimeout` | `number` | `10000`  | Timeout for backend health check in milliseconds|
+| Option               | Type     | Default | Description                                      |
+| -------------------- | -------- | ------- | ------------------------------------------------ |
+| `deployTimeout`      | `number` | `60000` | Timeout for deploy operations in milliseconds    |
+| `healthCheckTimeout` | `number` | `10000` | Timeout for backend health check in milliseconds |
 
 ### Binary Management
 
-| Option           | Type     | Default                              | Description                                      |
-| ---------------- | -------- | ------------------------------------ | ------------------------------------------------ |
-| `binaryVersion`  | `string` | latest                               | Pin to a specific Convex backend version (e.g., `"precompiled-2024-12-17"`) |
-| `binaryCacheDir` | `string` | `~/.convex-local-backend/releases`   | Directory to cache the Convex binary             |
-| `binaryCacheTtl` | `number` | `604800000` (7 days)                 | How long to use cached binary before checking for updates (ms) |
+| Option           | Type     | Default                            | Description                                                                 |
+| ---------------- | -------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| `binaryVersion`  | `string` | latest                             | Pin to a specific Convex backend version (e.g., `"precompiled-2024-12-17"`) |
+| `binaryCacheDir` | `string` | `~/.convex-local-backend/releases` | Directory to cache the Convex binary                                        |
+| `binaryCacheTtl` | `number` | `604800000` (7 days)               | How long to use cached binary before checking for updates (ms)              |
 
 ### Using ConvexBackend Directly
 
