@@ -16,7 +16,15 @@
   "files.associations": {
     "*.css": "tailwindcss"
   },
-  "oxc.fmt.experimental": true,
+  "files.readonlyInclude": {
+    "**/convex/_generated/**": true
+  },
+  "search.exclude": {
+    "**/convex/_generated/**": true
+  },
+  "files.watcherExclude": {
+    "**/convex/_generated/**": true
+  },
   "oxc.typeAware": true,
   "oxc.configPath": ".config/.oxlintrc.json",
   "oxc.fmt.configPath": ".config/.oxfmtrc.json",

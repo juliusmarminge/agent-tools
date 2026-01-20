@@ -65,3 +65,4 @@ You're working in a monorepo using:
 - Use lists and tables when appropriate
 - When writing JSDocs, only use TypeDoc compatible tags.
 - Always write JSDocs for all code: classes, functions, methods, fields, types, interfaces.
+- For publishable code, always write a README.md file with usage examples and API documentation.

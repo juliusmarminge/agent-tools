@@ -1,5 +1,8 @@
 .DS_Store
 .cache
+.context
+.convex
+.cursor/debug.log
 .nitro
 .output
 .tanstack

@@ -15,13 +15,16 @@
   },
   "scripts": {
     "build": "tsdown src/index.ts --format esm --dts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist node_modules .turbo"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.2.1"
   },
   "devDependencies": {
     "tsdown": "0.16.7",
-    "vite": "^6.0.0"
+    "vite": "^7.3.1"
   },
   "peerDependencies": {
-    "vite": "^5.0.0 || ^6.0.0"
+    "vite": "^7.0.0"
   }
 }
