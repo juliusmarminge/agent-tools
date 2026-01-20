@@ -65,8 +65,8 @@ export class ConvexBackend {
     const sqlitePath = path.join(backendDir, "convex_local_backend.sqlite3");
     const convexBinary = await downloadConvexBinary();
 
-    this.port = findUnusedPort();
-    this.siteProxyPort = findUnusedPort();
+    this.port = await findUnusedPort();
+    this.siteProxyPort = await findUnusedPort();
 
     this.process = childProcess.spawn(
       convexBinary,

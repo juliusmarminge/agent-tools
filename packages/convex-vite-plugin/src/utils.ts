@@ -2,6 +2,7 @@ import * as ChildProcess from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
+import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -57,10 +58,43 @@ export function matchPattern(filePath: string, pattern: string): boolean {
 }
 
 /**
- * Find an unused port in the ephemeral range.
+ * Check if a port is available by attempting to bind to it.
  */
-export function findUnusedPort(): number {
-  return 10000 + Math.floor(Math.random() * 50000);
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once("error", () => {
+      resolve(false);
+    });
+
+    server.once("listening", () => {
+      server.close(() => {
+        resolve(true);
+      });
+    });
+
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+/**
+ * Find an unused port in the ephemeral range.
+ * Actually checks if the port is available before returning.
+ */
+export async function findUnusedPort(): Promise<number> {
+  const minPort = 10000;
+  const maxPort = 60000;
+  const maxAttempts = 100;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const port = minPort + Math.floor(Math.random() * (maxPort - minPort));
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+
+  throw new Error(`Could not find an available port after ${maxAttempts} attempts`);
 }
 
 /**
