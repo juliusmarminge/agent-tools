@@ -8,7 +8,7 @@
   "type": "module",
   "scripts": {
     "turbo": "turbo --root-turbo-json .config/turbo.jsonc",
-    "build": "bun run turbo run build --filter convex-vite-plugin",
+    "build": "bun run turbo run build --filter convex-vite-plugin --filter oxlint-plugin-convex",
     "clean": "bun run turbo run clean && rm -rf .turbo node_modules",
     "dev": "bun run turbo watch build test --filter convex-vite-plugin --filter //",
     "fmt": "oxfmt -c .config/.oxfmtrc.json",
