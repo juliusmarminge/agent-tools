@@ -1,4 +1,5 @@
 import type { ChildProcess, StdioOptions } from "node:child_process";
+import type { Logger } from "vite";
 
 import * as childProcess from "node:child_process";
 import * as crypto from "node:crypto";
@@ -6,22 +7,23 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
+import { generateKeyPair } from "./keys.ts";
 import { downloadConvexBinary, findUnusedPort, waitForHttpOk } from "./utils.ts";
 
 /**
  * Options for creating a ConvexBackend instance.
  */
 export interface ConvexBackendOptions {
-  /** The instance name for the Convex backend */
-  instanceName: string;
-  /** The instance secret for the Convex backend */
-  instanceSecret: string;
-  /** The admin key for authenticating with the Convex backend */
-  adminKey: string;
+  /** The instance name for the Convex backend (defaults to "convex-local") */
+  instanceName?: string | undefined;
+  /** The instance secret for the Convex backend (auto-generated if not provided) */
+  instanceSecret?: string | undefined;
+  /** The admin key for authenticating with the Convex backend (auto-generated if not provided) */
+  adminKey?: string | undefined;
   /** The project directory containing the Convex functions (defaults to cwd) */
-  projectDir?: string;
+  projectDir?: string | undefined;
   /** How to handle stdio from the backend process */
-  stdio?: StdioOptions;
+  stdio?: StdioOptions | undefined;
 }
 
 /**
@@ -44,14 +46,25 @@ export class ConvexBackend {
   private readonly instanceName: string;
   private readonly instanceSecret: string;
   private readonly adminKey: string;
+  private readonly logger: Logger;
 
-  constructor(options: ConvexBackendOptions) {
+  constructor(options: ConvexBackendOptions, logger: Logger) {
+    this.logger = logger;
     this.projectDir = options.projectDir ?? process.cwd();
     this.backendDir = path.join(this.projectDir, ".convex", crypto.randomBytes(16).toString("hex"));
     this.stdio = options.stdio ?? "inherit";
-    this.instanceName = options.instanceName;
-    this.instanceSecret = options.instanceSecret;
-    this.adminKey = options.adminKey;
+
+    // Auto-generate keys if not provided
+    this.instanceName = options.instanceName ?? "convex-local";
+
+    if (options.instanceSecret && options.adminKey) {
+      this.instanceSecret = options.instanceSecret;
+      this.adminKey = options.adminKey;
+    } else {
+      const keys = generateKeyPair(this.instanceName);
+      this.instanceSecret = keys.instanceSecret;
+      this.adminKey = keys.adminKey;
+    }
   }
 
   /**
@@ -94,6 +107,14 @@ export class ConvexBackend {
     if (!this.process.pid) {
       throw new Error("Convex process failed to start - no PID assigned");
     }
+
+    this.backendUrl = `http://127.0.0.1:${this.port}`;
+
+    this.logger.info("Backend started successfully");
+    this.logger.info(`  Instance name:   ${this.instanceName}`);
+    this.logger.info(`  Instance secret: ${this.instanceSecret}`);
+    this.logger.info(`  Admin key:       ${this.adminKey}`);
+    this.logger.info(`  Backend URL:     ${this.backendUrl}`);
   }
 
   private async healthCheck(): Promise<void> {
@@ -198,17 +219,20 @@ export class ConvexBackend {
   async stop(cleanup = true): Promise<void> {
     if (!this.process || this.process.pid === undefined) return;
 
-    console.log(`[convex] Stopping backend...`);
+    this.logger.info("Stopping backend...");
 
     const pid = this.process.pid;
     try {
       process.kill(pid, "SIGTERM");
     } catch (error) {
-      console.warn(`Failed to terminate Convex backend gracefully:`, error);
+      this.logger.error(`Failed to terminate Convex backend gracefully:`, {
+        timestamp: true,
+        error: error as Error,
+      });
     }
 
     if (cleanup) {
-      console.log(`[convex] Cleaning up backend files...`);
+      this.logger.info("Cleaning up backend files...");
       await fsp.rm(this.backendDir, { recursive: true });
     }
   }

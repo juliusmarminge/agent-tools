@@ -86,6 +86,27 @@ The plugin computes a deterministic state directory based on your git branch and
 
 State is stored in `.convex/<state-id>/` in your project directory.
 
+## Using the Convex Dashboard
+
+You can use the Convex dashboard to inspect and manage your local backend. Run the dashboard using Docker:
+
+```bash
+docker run -e 'NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:<port>' -p '6791:6791' 'ghcr.io/get-convex/convex-dashboard:latest'
+```
+
+Replace `<port>` with the backend port shown in the console output when the plugin starts:
+
+```
+[convex]   Backend URL:     http://127.0.0.1:54321
+```
+
+Then visit [http://localhost:6791](http://localhost:6791) and enter the admin key (also shown in the console output).
+
+### Browser Compatibility
+
+- **Safari**: Blocks requests to localhost. Use Chrome, Firefox, or Edge instead.
+- **Brave**: Blocks localhost by default. Enable the `#brave-localhost-access-permission` flag in `brave://flags/` and allow localhost access in site settings.
+
 ## Advanced Usage
 
 ### Startup Scripts / Seeding

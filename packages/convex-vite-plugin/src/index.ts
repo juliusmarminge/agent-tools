@@ -1,10 +1,39 @@
-import type { Plugin, ViteDevServer } from "vite";
+import type { Logger, Plugin, ViteDevServer } from "vite";
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createLogger } from "vite";
 
 import { ConvexBackend } from "./backend.ts";
+import { generateKeyPair } from "./keys.ts";
 import { computeStateId, debounce, matchPattern } from "./utils.ts";
+
+// Create a Vite-style logger with [convex] prefix
+const logger: Logger = createLogger("info", { prefix: "[convex]" });
+
+interface PersistedKeys {
+  instanceName: string;
+  instanceSecret: string;
+  adminKey: string;
+}
+
+function loadPersistedKeys(keysPath: string): PersistedKeys | null {
+  try {
+    if (fs.existsSync(keysPath)) {
+      const data = fs.readFileSync(keysPath, "utf-8");
+      return JSON.parse(data) as PersistedKeys;
+    }
+  } catch {
+    // Ignore errors, will regenerate keys
+  }
+  return null;
+}
+
+function savePersistedKeys(keysPath: string, keys: PersistedKeys): void {
+  const dir = path.dirname(keysPath);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(keysPath, JSON.stringify(keys, null, 2));
+}
 
 /**
  * A function call to run on the backend.
@@ -17,12 +46,12 @@ export interface ConvexFunctionCall {
 }
 
 export interface ConvexLocalOptions {
-  /** The instance name for the Convex backend */
-  instanceName: string;
-  /** The instance secret for the Convex backend */
-  instanceSecret: string;
-  /** The admin key for authenticating with the Convex backend */
-  adminKey: string;
+  /** The instance name for the Convex backend (defaults to "convex-local") */
+  instanceName?: string;
+  /** The instance secret for the Convex backend (auto-generated if not provided) */
+  instanceSecret?: string;
+  /** The admin key for authenticating with the Convex backend (auto-generated if not provided) */
+  adminKey?: string;
   /** The project directory containing the Convex functions (defaults to cwd) */
   projectDir?: string;
   /** Reset backend state before starting (delete existing data) */
@@ -77,16 +106,15 @@ export interface ConvexLocalOptions {
  *
  * export default defineConfig({
  *   plugins: [
- *     convexLocal({
- *       instanceName: "my-app",
- *       instanceSecret: "secret",
- *       adminKey: "admin-key",
- *     }),
+ *     // Keys are auto-generated if not provided
+ *     convexLocal(),
+ *     // Or with custom instance name
+ *     convexLocal({ instanceName: "my-app" }),
  *   ],
  * });
  * ```
  */
-export function convexLocal(options: ConvexLocalOptions): Plugin {
+export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
   let backend: ConvexBackend | null = null;
   let isDeploying = false;
   let pendingDeploy = false;
@@ -110,7 +138,7 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
 
   const deploy = (): void => {
     if (!backend?.port) {
-      console.warn("[convex] Cannot deploy: backend not running");
+      logger.warn("Cannot deploy: backend not running", { timestamp: true });
       return;
     }
 
@@ -120,13 +148,13 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
     }
 
     isDeploying = true;
-    console.log("[convex] Deploying...");
+    logger.info("Deploying...", { timestamp: true });
 
     try {
       backend.deploy();
-      console.log("[convex] Deploy successful");
-    } catch (error: unknown) {
-      console.error("[convex] Deploy failed:", error);
+      logger.info("Deploy successful", { timestamp: true });
+    } catch (error) {
+      logger.error(`Deploy failed:`, { timestamp: true, error: error as Error });
     } finally {
       isDeploying = false;
       if (pendingDeploy) {
@@ -149,34 +177,69 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
       // Compute deterministic state directory based on git branch + cwd
       const stateId = computeStateId(projectDir);
       const backendDir = path.join(projectDir, ".convex", stateId);
+      const keysPath = path.join(backendDir, "keys.json");
       const stateExists = fs.existsSync(backendDir);
 
       // Handle reset - delete existing state if requested
       if (options.reset && stateExists) {
-        console.log("[convex] Resetting backend state...");
+        logger.info("Resetting backend state...", { timestamp: true });
         fs.rmSync(backendDir, { recursive: true, force: true });
       }
 
-      backend = new ConvexBackend({
-        instanceName: options.instanceName,
-        instanceSecret: options.instanceSecret,
-        adminKey: options.adminKey,
-        projectDir,
-        stdio: options.stdio ?? "inherit",
-      });
+      // Load or generate keys
+      let keys: PersistedKeys;
+      const existingKeys = loadPersistedKeys(keysPath);
+
+      if (existingKeys && !options.reset) {
+        // Use existing keys for this state directory
+        keys = existingKeys;
+        logger.info("Loaded persisted keys", { timestamp: true });
+      } else if (options.instanceSecret && options.adminKey) {
+        // Use explicitly provided keys
+        keys = {
+          instanceName: options.instanceName ?? "convex-local",
+          instanceSecret: options.instanceSecret,
+          adminKey: options.adminKey,
+        };
+        savePersistedKeys(keysPath, keys);
+        logger.info("Using provided keys", { timestamp: true });
+      } else {
+        // Generate new keys
+        const instanceName = options.instanceName ?? "convex-local";
+        const generated = generateKeyPair(instanceName);
+        keys = {
+          instanceName,
+          instanceSecret: generated.instanceSecret,
+          adminKey: generated.adminKey,
+        };
+        savePersistedKeys(keysPath, keys);
+        logger.info("Generated new keys", { timestamp: true });
+      }
+
+      backend = new ConvexBackend(
+        {
+          instanceName: keys.instanceName,
+          instanceSecret: keys.instanceSecret,
+          adminKey: keys.adminKey,
+          projectDir,
+          stdio: options.stdio ?? "ignore",
+        },
+        logger,
+      );
 
       // Override the random backendDir with our deterministic one
       backend.backendDir = backendDir;
 
       const isResume = stateExists && !options.reset;
-      console.log(
+      logger.info(
         isResume
-          ? `[convex] Resuming backend from existing state (${stateId})...`
-          : `[convex] Starting fresh backend (${stateId})...`,
+          ? `Resuming backend from existing state (${stateId})...`
+          : `Starting fresh backend (${stateId})...`,
+        { timestamp: true },
       );
 
       await backend.startBackend(backendDir);
-      console.log(`[convex] Backend running on port ${backend.port}`);
+      logger.info(`Backend running on port ${backend.port}`, { timestamp: true });
 
       const backendUrl = `http://localhost:${backend.port}`;
       const siteUrl = `http://localhost:${backend.siteProxyPort}`;
@@ -218,7 +281,7 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
           const relativePath = filePath.startsWith(projectDir)
             ? filePath.slice(projectDir.length + 1)
             : filePath;
-          console.log(`[convex] File changed: ${relativePath}`);
+          logger.info(`File changed: ${relativePath}`, { timestamp: true });
           debouncedDeploy();
         }
       };
@@ -237,7 +300,7 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
         const vitePort =
           addr && typeof addr === "object" ? addr.port : (server.config.server.port ?? 3000);
 
-        console.log(`[convex] Vite server port: ${vitePort}`);
+        logger.info(`Vite server port: ${vitePort}`, { timestamp: true });
 
         // Set env vars and deploy asynchronously
         void (async () => {
@@ -263,20 +326,25 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
 
           // Run onReady functions (e.g., seed scripts)
           if (options.onReady && options.onReady.length > 0) {
-            console.log(`[convex] Running ${options.onReady.length} startup function(s)...`);
+            logger.info(`Running ${options.onReady.length} startup function(s)...`, {
+              timestamp: true,
+            });
             for (const fn of options.onReady) {
               try {
-                console.log(`[convex] Running ${fn.name}...`);
+                logger.info(`Running ${fn.name}...`, { timestamp: true });
                 await backend.runFunction(fn.name, fn.args ?? {});
-                console.log(`[convex] ${fn.name} completed`);
+                logger.info(`${fn.name} completed`, { timestamp: true });
               } catch (error) {
-                console.error(`[convex] Failed to run ${fn.name}:`, error);
+                logger.error(`Failed to run ${fn.name}:`, {
+                  timestamp: true,
+                  error: error as Error,
+                });
               }
             }
           }
 
           const backendUrl = `http://localhost:${backend.port}`;
-          console.log(`[convex] Backend ready at ${backendUrl}`);
+          logger.info(`Backend ready at ${backendUrl}`, { timestamp: true });
         })();
       });
     },
@@ -287,3 +355,6 @@ export default convexLocal;
 
 // Re-export backend for advanced use cases
 export { ConvexBackend, type ConvexBackendOptions } from "./backend.ts";
+
+// Re-export key utilities for manual key generation
+export { generateInstanceSecret, generateAdminKey, generateKeyPair } from "./keys.ts";

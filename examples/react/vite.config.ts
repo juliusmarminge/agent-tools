@@ -6,9 +6,8 @@ export default defineConfig({
   plugins: [
     react(),
     convexLocal({
-      instanceName: "my-app",
-      instanceSecret: "secret",
-      adminKey: "admin-key",
+      // reset: true,
+      stdio: "ignore",
     }),
   ],
 });
