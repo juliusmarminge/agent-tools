@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "@tanstack-themes/root",
@@ -16,8 +15,8 @@
         "vitest": "4.0.17",
       },
     },
-    "examples/react": {
-      "name": "@examples/react",
+    "examples/convex-spa": {
+      "name": "@examples/convex-spa",
       "dependencies": {
         "convex": "^1.31.5",
         "react": "^19.2.3",
@@ -34,7 +33,7 @@
     },
     "packages/convex-vite-plugin": {
       "name": "convex-vite-plugin",
-      "version": "0.0.1",
+      "version": "0.1.0",
       "dependencies": {
         "@noble/ciphers": "^1.2.1",
       },
@@ -184,7 +183,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.27.0", "", { "os": "win32", "cpu": "x64" }, "sha512-aIitBcjQeyOhMTImhLZmtxfdOcuNRpwlPNmlFKPcHQYPhEssw75Cl1TSXJXpMkzaua9FUetx/4OQKq7eJul5Cg=="],
 
-    "@examples/react": ["@examples/react@workspace:examples/react"],
+    "@examples/convex-spa": ["@examples/convex-spa@workspace:examples/convex-spa"],
 
     "@inquirer/external-editor": ["@inquirer/external-editor@1.0.3", "", { "dependencies": { "chardet": "^2.1.1", "iconv-lite": "^0.7.0" }, "peerDependencies": { "@types/node": ">=18" }, "optionalPeers": ["@types/node"] }, "sha512-RWbSrDiYmO4LbejWY7ttpxczuwQyZLBUyygsA9Nsv95hpzUWwnNTVQmAq3xuh7vNwCp07UTmE5i11XAEExx4RA=="],
 
