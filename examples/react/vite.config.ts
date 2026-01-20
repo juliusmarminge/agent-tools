@@ -1,7 +1,14 @@
 import react from "@vitejs/plugin-react";
-import { convexVitePlugin } from "convex-vite-plugin";
+import { convexLocal } from "convex-vite-plugin";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react(), convexVitePlugin()],
+  plugins: [
+    react(),
+    convexLocal({
+      instanceName: "my-app",
+      instanceSecret: "secret",
+      adminKey: "admin-key",
+    }),
+  ],
 });
