@@ -1,0 +1,25 @@
+{
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": ["oxlint-plugin-convex"],
+  "rules": {
+    "convex/no-unused-functions": [
+      "warn",
+      {
+        // Patterns to ignore when checking for unused functions:
+        // - "module.*" ignores all functions in a module
+        // - "module.function" ignores a specific function
+        // - "function" ignores a function in any module
+        "ignorePatterns": [
+          // "presence.*",
+          // "internal.*"
+        ],
+        // Glob patterns for files whose api usages should be ignored
+        // Useful for excluding test files from the usage scan
+        "ignoreUsageFiles": [
+          // "**/*.test.ts",
+          // "**/*.test.tsx"
+        ]
+      }
+    ]
+  }
+}
