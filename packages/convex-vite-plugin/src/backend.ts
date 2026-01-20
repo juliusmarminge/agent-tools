@@ -28,6 +28,16 @@ export interface ConvexBackendOptions {
   projectDir?: string | undefined;
   /** How to handle stdio from the backend process */
   stdio?: StdioOptions | undefined;
+  /** Timeout for deploy operations in milliseconds (defaults to 60000) */
+  deployTimeout?: number | undefined;
+  /** Timeout for backend health check in milliseconds (defaults to 10000) */
+  healthCheckTimeout?: number | undefined;
+  /** Pin to a specific Convex backend version (e.g., "precompiled-2024-12-17") */
+  binaryVersion?: string | undefined;
+  /** Directory to cache the Convex binary (defaults to ~/.convex-local-backend/releases) */
+  binaryCacheDir?: string | undefined;
+  /** How long to use a cached binary before checking for updates in milliseconds (defaults to 7 days) */
+  binaryCacheTtl?: number | undefined;
 }
 
 /**
@@ -51,12 +61,22 @@ export class ConvexBackend {
   private readonly instanceSecret: string;
   private readonly adminKey: string;
   private readonly logger: Logger;
+  private readonly deployTimeout: number;
+  private readonly healthCheckTimeout: number;
+  private readonly binaryVersion: string | undefined;
+  private readonly binaryCacheDir: string | undefined;
+  private readonly binaryCacheTtl: number;
 
   constructor(options: ConvexBackendOptions, logger: Logger) {
     this.logger = logger;
     this.projectDir = options.projectDir ?? process.cwd();
     this.backendDir = path.join(this.projectDir, ".convex", crypto.randomBytes(16).toString("hex"));
     this.stdio = options.stdio ?? "inherit";
+    this.deployTimeout = options.deployTimeout ?? 60000;
+    this.healthCheckTimeout = options.healthCheckTimeout ?? 10000;
+    this.binaryVersion = options.binaryVersion;
+    this.binaryCacheDir = options.binaryCacheDir;
+    this.binaryCacheTtl = options.binaryCacheTtl ?? 7 * 24 * 60 * 60 * 1000; // 7 days
 
     // Use fixed ports if provided
     this.port = options.port ?? 3210;
@@ -89,7 +109,9 @@ export class ConvexBackend {
     const sqlitePath = path.join(backendDir, "convex_local_backend.sqlite3");
     const convexBinary = await downloadConvexBinary(
       {
-        cacheTtlMs: 7 * 24 * 60 * 60 * 1000, // 1 week in ms
+        cacheTtlMs: this.binaryCacheTtl,
+        version: this.binaryVersion,
+        cacheDir: this.binaryCacheDir,
       },
       this.logger,
     );
@@ -149,7 +171,7 @@ export class ConvexBackend {
   private async healthCheck(): Promise<void> {
     if (!this.port) throw new Error("Port not set for health check");
     const url = `http://localhost:${this.port}/version`;
-    await waitForHttpOk(url, 10_000);
+    await waitForHttpOk(url, this.healthCheckTimeout);
   }
 
   /**
@@ -167,7 +189,7 @@ export class ConvexBackend {
         cwd: this.projectDir,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: 60000,
+        timeout: this.deployTimeout,
       },
     );
 

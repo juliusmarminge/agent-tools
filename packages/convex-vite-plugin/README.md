@@ -25,13 +25,7 @@ import { convexLocal } from "convex-vite-plugin";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [
-    convexLocal({
-      instanceName: "my-app",
-      instanceSecret: "my-secret",
-      adminKey: "my-admin-key",
-    }),
-  ],
+  plugins: [convexLocal()],
 });
 ```
 
@@ -53,28 +47,32 @@ function App() {
 
 ## Options
 
-| Option             | Type                                                                       | Required | Description                                                              |
-| ------------------ | -------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `instanceName`     | `string`                                                                   | Yes      | The instance name for the Convex backend                                 |
-| `instanceSecret`   | `string`                                                                   | Yes      | The instance secret for the Convex backend                               |
-| `adminKey`         | `string`                                                                   | Yes      | The admin key for authenticating with the Convex backend                 |
-| `projectDir`       | `string`                                                                   | No       | The project directory containing the Convex functions (defaults to cwd)  |
-| `reset`            | `boolean`                                                                  | No       | Reset backend state before starting (delete existing data)               |
-| `envVars`          | `Record<string, string>` or `(vitePort: number) => Record<string, string>` | No       | Environment variables to set on the backend                              |
-| `watch.patterns`   | `string[]`                                                                 | No       | Glob patterns to watch (defaults to `["convex/*.ts", "convex/**/*.ts"]`) |
-| `watch.ignore`     | `string[]`                                                                 | No       | Glob patterns to ignore (defaults to `["convex/_generated/**"]`)         |
-| `watch.debounceMs` | `number`                                                                   | No       | Debounce delay in milliseconds (defaults to `500`)                       |
-| `stdio`            | `"inherit"` or `"ignore"`                                                  | No       | How to handle stdio from the backend process                             |
-| `onReady`          | `ConvexFunctionCall[]`                                                     | No       | Functions to run after backend is ready (e.g., seed scripts)             |
+All options are optional. The plugin auto-generates keys and finds available ports by default.
+
+| Option           | Type                                                                       | Default                                      | Description                                                 |
+| ---------------- | -------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------- |
+| `instanceName`   | `string`                                                                   | `"convex-local"`                             | The instance name for the Convex backend                    |
+| `projectDir`     | `string`                                                                   | `process.cwd()`                              | The project directory containing the Convex functions       |
+| `convexDir`      | `string`                                                                   | `"convex"`                                   | The directory containing Convex functions (relative to projectDir) |
+| `reset`          | `boolean`                                                                  | `false`                                      | Reset backend state before starting (delete existing data)  |
+| `envVars`        | `Record<string, string>` or `(vitePort: number) => Record<string, string>` | -                                            | Environment variables to set on the backend                 |
+| `onReady`        | `ConvexFunctionCall[]`                                                     | -                                            | Functions to run after backend is ready (e.g., seed scripts)|
+| `stdio`          | `"inherit"` or `"ignore"`                                                  | `"ignore"`                                   | How to handle stdio from the backend process                |
+
+### File Watching
+
+| Option             | Type       | Default                              | Description                            |
+| ------------------ | ---------- | ------------------------------------ | -------------------------------------- |
+| `watch.patterns`   | `string[]` | `["<convexDir>/*.ts", "<convexDir>/**/*.ts"]` | Glob patterns to watch        |
+| `watch.ignore`     | `string[]` | `["<convexDir>/_generated/**"]`      | Glob patterns to ignore                |
+| `watch.debounceMs` | `number`   | `500`                                | Debounce delay in milliseconds         |
 
 ## Environment Variables
 
-The plugin sets the following environment variables:
+The plugin sets the following environment variables in your Vite app:
 
 - `VITE_CONVEX_URL` - The URL of the local Convex backend
-- `VITE_CONVEX_SITE_URL` - The URL of the Convex site proxy
-
-Additionally, the plugin sets `IS_TEST=true` on the backend.
+- `VITE_CONVEX_SITE_URL` - The URL of the Convex site proxy (for HTTP actions)
 
 ## State Persistence
 
@@ -85,6 +83,48 @@ The plugin computes a deterministic state directory based on your git branch and
 - Use the `reset` option to clear state when needed
 
 State is stored in `.convex/<state-id>/` in your project directory.
+
+## Startup Scripts / Seeding
+
+You can run functions after the backend is ready using the `onReady` option. This is useful for seeding data or running initialization scripts:
+
+```ts
+convexLocal({
+  onReady: [
+    { name: "seed:default" },
+    { name: "init:createAdmin", args: { email: "admin@example.com" } },
+  ],
+});
+```
+
+Each function call specifies:
+
+- `name`: The function path (e.g., `"myModule:myFunction"`)
+- `args`: Optional arguments to pass to the function
+
+Functions are executed sequentially after the initial deploy completes.
+
+## Custom Environment Variables
+
+You can set custom environment variables on the backend:
+
+```ts
+convexLocal({
+  envVars: {
+    MY_API_KEY: "secret-key",
+  },
+});
+```
+
+Or use a function to access the Vite port:
+
+```ts
+convexLocal({
+  envVars: (vitePort) => ({
+    FRONTEND_URL: `http://localhost:${vitePort}`,
+  }),
+});
+```
 
 ## Using the Convex Dashboard
 
@@ -107,58 +147,48 @@ Then visit [http://localhost:6791](http://localhost:6791) and enter the admin ke
 - **Safari**: Blocks requests to localhost. Use Chrome, Firefox, or Edge instead.
 - **Brave**: Blocks localhost by default. Enable the `#brave-localhost-access-permission` flag in `brave://flags/` and allow localhost access in site settings.
 
-## Advanced Usage
+---
 
-### Startup Scripts / Seeding
+## Advanced Options
 
-You can run functions after the backend is ready using the `onReady` option. This is useful for seeding data or running initialization scripts:
+These options are for advanced use cases and generally don't need to be changed.
 
-```ts
-convexLocal({
-  instanceName: "my-app",
-  instanceSecret: "my-secret",
-  adminKey: "my-admin-key",
-  onReady: [
-    { name: "seed:default" },
-    { name: "init:createAdmin", args: { email: "admin@example.com" } },
-  ],
-});
-```
+### Port Configuration
 
-Each function call specifies:
+| Option          | Type     | Default              | Description                                      |
+| --------------- | -------- | -------------------- | ------------------------------------------------ |
+| `port`          | `number` | dynamically assigned | Port for the Convex backend                      |
+| `siteProxyPort` | `number` | dynamically assigned | Port for the Convex site proxy / HTTP actions    |
 
-- `name`: The function path (e.g., `"myModule:myFunction"`)
-- `args`: Optional arguments to pass to the function
+### Authentication Keys
 
-Functions are executed sequentially after the initial deploy completes.
+Keys are auto-generated and persisted across restarts. Only provide these if you need to use specific keys.
 
-### Custom Environment Variables
+| Option           | Type     | Default        | Description                                    |
+| ---------------- | -------- | -------------- | ---------------------------------------------- |
+| `instanceSecret` | `string` | auto-generated | The instance secret for the Convex backend     |
+| `adminKey`       | `string` | auto-generated | The admin key for authenticating with the backend |
 
-You can set custom environment variables on the backend:
+### State Management
 
-```ts
-convexLocal({
-  instanceName: "my-app",
-  instanceSecret: "my-secret",
-  adminKey: "my-admin-key",
-  envVars: {
-    MY_API_KEY: "secret-key",
-  },
-});
-```
+| Option          | Type     | Default     | Description                                                        |
+| --------------- | -------- | ----------- | ------------------------------------------------------------------ |
+| `stateIdSuffix` | `string` | -           | Suffix for unique backend instances (when cwd and branch are same) |
 
-Or use a function to access the Vite port:
+### Timeouts
 
-```ts
-convexLocal({
-  instanceName: "my-app",
-  instanceSecret: "my-secret",
-  adminKey: "my-admin-key",
-  envVars: (vitePort) => ({
-    FRONTEND_URL: `http://localhost:${vitePort}`,
-  }),
-});
-```
+| Option               | Type     | Default  | Description                                     |
+| -------------------- | -------- | -------- | ----------------------------------------------- |
+| `deployTimeout`      | `number` | `60000`  | Timeout for deploy operations in milliseconds   |
+| `healthCheckTimeout` | `number` | `10000`  | Timeout for backend health check in milliseconds|
+
+### Binary Management
+
+| Option           | Type     | Default                              | Description                                      |
+| ---------------- | -------- | ------------------------------------ | ------------------------------------------------ |
+| `binaryVersion`  | `string` | latest                               | Pin to a specific Convex backend version (e.g., `"precompiled-2024-12-17"`) |
+| `binaryCacheDir` | `string` | `~/.convex-local-backend/releases`   | Directory to cache the Convex binary             |
+| `binaryCacheTtl` | `number` | `604800000` (7 days)                 | How long to use cached binary before checking for updates (ms) |
 
 ### Using ConvexBackend Directly
 
@@ -169,8 +199,6 @@ import { ConvexBackend } from "convex-vite-plugin";
 
 const backend = new ConvexBackend({
   instanceName: "my-app",
-  instanceSecret: "my-secret",
-  adminKey: "my-admin-key",
 });
 
 await backend.startBackend("/path/to/state");

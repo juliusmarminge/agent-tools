@@ -179,10 +179,25 @@ function getPlatformTarget(): string {
 function findAsset(
   releases: GitHubRelease[],
   target: string,
+  version?: string,
 ): {
   asset: { name: string; browser_download_url: string };
   version: string;
 } {
+  // If a specific version is requested, find that release
+  if (version) {
+    const release = releases.find((r) => r.tag_name === version);
+    if (!release) {
+      throw new Error(`Convex backend version '${version}' not found`);
+    }
+    const asset = release.assets.find((a) => a.name.includes(target));
+    if (!asset) {
+      throw new Error(`No asset for '${target}' in version '${version}'`);
+    }
+    return { asset, version: release.tag_name };
+  }
+
+  // Otherwise, find the latest release with a matching asset
   for (const release of releases) {
     const asset = release.assets.find((a) => a.name.includes(target));
     if (asset) return { asset, version: release.tag_name };
@@ -228,6 +243,16 @@ export interface DownloadConvexBinaryOptions {
    * Set to 0 to always check for updates.
    */
   cacheTtlMs: number;
+  /**
+   * Pin to a specific Convex backend version (e.g., "precompiled-2024-12-17").
+   * If not specified, uses the latest available version.
+   */
+  version?: string | undefined;
+  /**
+   * Directory to cache the Convex binary.
+   * Defaults to ~/.convex-local-backend/releases
+   */
+  cacheDir?: string | undefined;
 }
 
 /**
@@ -294,11 +319,13 @@ export async function downloadConvexBinary(
   const isWindows = process.platform === "win32";
   const target = getPlatformTarget();
 
-  const binaryDir = path.join(os.homedir(), ".convex-local-backend", "releases");
+  const binaryDir =
+    options.cacheDir ?? path.join(os.homedir(), ".convex-local-backend", "releases");
   fs.mkdirSync(binaryDir, { recursive: true });
 
   // Check for cached binary first (avoids GitHub API calls)
-  if (cacheTtlMs > 0) {
+  // Skip cache check if a specific version is requested
+  if (cacheTtlMs > 0 && !options.version) {
     const cachedBinary = findCachedBinary(binaryDir, cacheTtlMs);
     if (cachedBinary) {
       return cachedBinary;
@@ -307,7 +334,7 @@ export async function downloadConvexBinary(
 
   // No valid cache, fetch from GitHub
   const releases = await fetchConvexReleases();
-  const { asset, version } = findAsset(releases, target);
+  const { asset, version } = findAsset(releases, target, options.version);
 
   const binaryName = `convex-local-backend-${version}${isWindows ? ".exe" : ""}`;
   const binaryPath = path.join(binaryDir, binaryName);

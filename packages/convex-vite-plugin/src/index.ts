@@ -71,6 +71,8 @@ export interface ConvexLocalOptions {
   siteProxyPort?: number | undefined;
   /** The project directory containing the Convex functions (defaults to cwd) */
   projectDir?: string | undefined;
+  /** The directory containing Convex functions, relative to projectDir (defaults to "convex") */
+  convexDir?: string | undefined;
   /**
    * Optional suffix to include in the stateId hash.
    * Use this to run multiple unique backend instances even when cwd and git branch are the same.
@@ -89,9 +91,9 @@ export interface ConvexLocalOptions {
   /** File watching configuration */
   watch?:
     | {
-        /** Glob patterns to watch (defaults to convex/*.ts and convex/**\/*.ts) */
+        /** Glob patterns to watch (defaults to <convexDir>/*.ts and <convexDir>/**\/*.ts) */
         patterns?: string[] | undefined;
-        /** Glob patterns to ignore (defaults to convex/_generated/**) */
+        /** Glob patterns to ignore (defaults to <convexDir>/_generated/**) */
         ignore?: string[] | undefined;
         /** Debounce delay in milliseconds (defaults to 500) */
         debounceMs?: number | undefined;
@@ -112,6 +114,19 @@ export interface ConvexLocalOptions {
    * ```
    */
   onReady?: ConvexFunctionCall[] | undefined;
+  /** Timeout for deploy operations in milliseconds (defaults to 60000) */
+  deployTimeout?: number | undefined;
+  /** Timeout for backend health check in milliseconds (defaults to 10000) */
+  healthCheckTimeout?: number | undefined;
+  /**
+   * Pin to a specific Convex backend version (e.g., "precompiled-2024-12-17").
+   * If not specified, uses the latest available version.
+   */
+  binaryVersion?: string | undefined;
+  /** Directory to cache the Convex binary (defaults to ~/.convex-local-backend/releases) */
+  binaryCacheDir?: string | undefined;
+  /** How long to use a cached binary before checking for updates in milliseconds (defaults to 7 days) */
+  binaryCacheTtl?: number | undefined;
 }
 
 /**
@@ -145,12 +160,19 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
   let pendingDeploy = false;
 
   const projectDir = options.projectDir ?? process.cwd();
-  const watchPatterns = options.watch?.patterns ?? ["convex/*.ts", "convex/**/*.ts"];
+  const convexDir = options.convexDir ?? "convex";
+  const watchPatterns = options.watch?.patterns ?? [
+    `${convexDir}/*.ts`,
+    `${convexDir}/**/*.ts`,
+  ];
   const ignorePatterns = options.watch?.ignore ?? [
-    "convex/_generated/**",
-    "convex/_generated/*.ts",
+    `${convexDir}/_generated/**`,
+    `${convexDir}/_generated/*.ts`,
   ];
   const debounceMs = options.watch?.debounceMs ?? 500;
+  const deployTimeout = options.deployTimeout ?? 60000;
+  const healthCheckTimeout = options.healthCheckTimeout ?? 10000;
+  const binaryCacheTtl = options.binaryCacheTtl ?? 7 * 24 * 60 * 60 * 1000; // 7 days
 
   const shouldWatch = (filePath: string): boolean => {
     const relativePath = filePath.startsWith(projectDir)
@@ -266,8 +288,8 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       };
 
       // Explicitly add convex directory to watcher (not in Vite's module graph)
-      const convexDir = path.join(projectDir, "convex");
-      server.watcher.add(convexDir);
+      const convexDirPath = path.join(projectDir, convexDir);
+      server.watcher.add(convexDirPath);
 
       server.watcher.on("change", handleFileChange);
       server.watcher.on("add", handleFileChange);
@@ -323,6 +345,11 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                 siteProxyPort,
                 projectDir,
                 stdio: options.stdio ?? "ignore",
+                deployTimeout,
+                healthCheckTimeout,
+                binaryVersion: options.binaryVersion,
+                binaryCacheDir: options.binaryCacheDir,
+                binaryCacheTtl,
               },
               logger,
             );
@@ -341,9 +368,6 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
             // Wait for backend to be ready before making API calls
             await backend.waitForReady();
-
-            // Set IS_TEST env var
-            await backend.setEnv("IS_TEST", "true");
 
             // Set user-provided env vars
             if (options.envVars) {
