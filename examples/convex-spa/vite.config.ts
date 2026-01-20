@@ -6,12 +6,12 @@ export default defineConfig({
   plugins: [
     react(),
     convexLocal({
-      // reset: true,
-      stdio: "ignore",
-      stateIdSuffix: process.env.STATE_SUFFIX,
+      reset: process.env.RESET_LOCAL_BACKEND === "true" || process.env.RESET_LOCAL_BACKEND === "1",
+      stateIdSuffix: process.env.LOCAL_BACKEND_STATE_ID_SUFFIX,
       envVars: (vitePort) => ({
         SITE_URL: `http://localhost:${vitePort}`,
       }),
+      onReady: [{ name: "functions:seed" }],
     }),
   ],
 });

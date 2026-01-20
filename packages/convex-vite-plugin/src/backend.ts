@@ -141,7 +141,9 @@ export class ConvexBackend {
       throw new Error("Convex process failed to start - no PID assigned");
     }
 
-    this.logger.info(`Backend spawned on port ${this.port} (waiting for ready...)`);
+    this.logger.info(`Backend spawned on port ${this.port} (waiting for ready...)`, {
+      timestamp: true,
+    });
   }
 
   /**
@@ -152,10 +154,10 @@ export class ConvexBackend {
     await this.healthCheck();
 
     this.logger.info("Backend ready", { timestamp: true });
-    this.logger.info(`  Instance name:   ${this.instanceName}`);
-    this.logger.info(`  Instance secret: ${this.instanceSecret}`);
-    this.logger.info(`  Admin key:       ${this.adminKey}`);
-    this.logger.info(`  Backend URL:     ${this.backendUrl}`);
+    this.logger.info(`  Instance name:   ${this.instanceName}`, { timestamp: true });
+    this.logger.info(`  Instance secret: ${this.instanceSecret}`, { timestamp: true });
+    this.logger.info(`  Admin key:       ${this.adminKey}`, { timestamp: true });
+    this.logger.info(`  Backend URL:     ${this.backendUrl}`, { timestamp: true });
   }
 
   /**

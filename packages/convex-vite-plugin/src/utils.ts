@@ -348,15 +348,15 @@ export async function downloadConvexBinary(
   }
 
   const zipPath = path.join(binaryDir, asset.name);
-  logger.info(`Downloading Convex backend ${version}...`);
+  logger.info(`Downloading Convex backend ${version}...`, { timestamp: true });
   await downloadFile(asset.browser_download_url, zipPath);
-  logger.info(`Downloaded: ${asset.name}`);
+  logger.info(`Downloaded: ${asset.name}`, { timestamp: true });
 
   await extractZip(zipPath, binaryDir);
   const extracted = path.join(binaryDir, `convex-local-backend${isWindows ? ".exe" : ""}`);
   await fsp.rename(extracted, binaryPath);
   if (!isWindows) fs.chmodSync(binaryPath, 0o755);
   await fsp.rm(zipPath);
-  logger.info(`Binary ready at: ${binaryPath}`);
+  logger.info(`Binary ready at: ${binaryPath}`, { timestamp: true });
   return binaryPath;
 }
