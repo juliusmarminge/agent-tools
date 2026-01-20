@@ -158,6 +158,40 @@ export class ConvexBackend {
   }
 
   /**
+   * Run a Convex function (query, mutation, or action) on the backend.
+   * @param functionName - The function path (e.g., "myModule:myFunction")
+   * @param args - Arguments to pass to the function
+   * @returns The function result
+   */
+  async runFunction(functionName: string, args: Record<string, unknown> = {}): Promise<unknown> {
+    if (!this.port) throw new Error("Backend not started");
+
+    const backendUrl = `http://localhost:${this.port}`;
+
+    const response = await fetch(`${backendUrl}/api/function`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Convex-Client": "convex-vite-plugin",
+        Authorization: `Convex ${this.adminKey}`,
+      },
+      body: JSON.stringify({
+        path: functionName,
+        format: "json",
+        args,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to run ${functionName} (${response.status}): ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result.value;
+  }
+
+  /**
    * Stop the backend process.
    * @param cleanup - Whether to delete the backend state directory
    */

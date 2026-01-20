@@ -65,6 +65,7 @@ function App() {
 | `watch.ignore`     | `string[]`                                                                 | No       | Glob patterns to ignore (defaults to `["convex/_generated/**"]`)         |
 | `watch.debounceMs` | `number`                                                                   | No       | Debounce delay in milliseconds (defaults to `500`)                       |
 | `stdio`            | `"inherit"` or `"ignore"`                                                  | No       | How to handle stdio from the backend process                             |
+| `onReady`          | `ConvexFunctionCall[]`                                                     | No       | Functions to run after backend is ready (e.g., seed scripts)             |
 
 ## Environment Variables
 
@@ -86,6 +87,29 @@ The plugin computes a deterministic state directory based on your git branch and
 State is stored in `.convex/<state-id>/` in your project directory.
 
 ## Advanced Usage
+
+### Startup Scripts / Seeding
+
+You can run functions after the backend is ready using the `onReady` option. This is useful for seeding data or running initialization scripts:
+
+```ts
+convexLocal({
+  instanceName: "my-app",
+  instanceSecret: "my-secret",
+  adminKey: "my-admin-key",
+  onReady: [
+    { name: "seed:default" },
+    { name: "init:createAdmin", args: { email: "admin@example.com" } },
+  ],
+});
+```
+
+Each function call specifies:
+
+- `name`: The function path (e.g., `"myModule:myFunction"`)
+- `args`: Optional arguments to pass to the function
+
+Functions are executed sequentially after the initial deploy completes.
 
 ### Custom Environment Variables
 
@@ -131,6 +155,7 @@ const backend = new ConvexBackend({
 await backend.startBackend("/path/to/state");
 backend.deploy();
 await backend.setEnv("MY_VAR", "value");
+await backend.runFunction("seed:default", { count: 10 });
 await backend.stop();
 ```
 

@@ -7,8 +7,15 @@ import { ConvexBackend } from "./backend.ts";
 import { computeStateId, debounce, matchPattern } from "./utils.ts";
 
 /**
- * Options for the convexLocal Vite plugin.
+ * A function call to run on the backend.
  */
+export interface ConvexFunctionCall {
+  /** The function path (e.g., "myModule:myFunction" or "seed:default") */
+  name: string;
+  /** Arguments to pass to the function */
+  args?: Record<string, unknown>;
+}
+
 export interface ConvexLocalOptions {
   /** The instance name for the Convex backend */
   instanceName: string;
@@ -38,6 +45,19 @@ export interface ConvexLocalOptions {
   };
   /** How to handle stdio from the backend process */
   stdio?: "inherit" | "ignore";
+  /**
+   * Functions to run after the backend is ready (after initial deploy).
+   * Useful for seeding data or running initialization scripts.
+   *
+   * @example
+   * ```ts
+   * onReady: [
+   *   { name: "seed:default" },
+   *   { name: "init:setup", args: { admin: true } },
+   * ]
+   * ```
+   */
+  onReady?: ConvexFunctionCall[];
 }
 
 /**
@@ -240,6 +260,20 @@ export function convexLocal(options: ConvexLocalOptions): Plugin {
 
           // Initial deploy
           deploy();
+
+          // Run onReady functions (e.g., seed scripts)
+          if (options.onReady && options.onReady.length > 0) {
+            console.log(`[convex] Running ${options.onReady.length} startup function(s)...`);
+            for (const fn of options.onReady) {
+              try {
+                console.log(`[convex] Running ${fn.name}...`);
+                await backend.runFunction(fn.name, fn.args ?? {});
+                console.log(`[convex] ${fn.name} completed`);
+              } catch (error) {
+                console.error(`[convex] Failed to run ${fn.name}:`, error);
+              }
+            }
+          }
 
           const backendUrl = `http://localhost:${backend.port}`;
           console.log(`[convex] Backend ready at ${backendUrl}`);
