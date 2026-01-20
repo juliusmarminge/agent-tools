@@ -1,3 +1,5 @@
+import type { Logger } from "vite";
+
 import * as ChildProcess from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
@@ -8,8 +10,11 @@ import * as path from "node:path";
 /**
  * Compute a deterministic state ID based on git branch + working directory.
  * This allows the backend state to be reused across restarts.
+ *
+ * @param projectDir - The project directory path
+ * @param suffix - Optional suffix to include in the hash for unique instances
  */
-export function computeStateId(projectDir: string): string {
+export function computeStateId(projectDir: string, suffix: string | undefined): string {
   let gitBranch = "unknown";
   try {
     const result = ChildProcess.spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
@@ -24,10 +29,13 @@ export function computeStateId(projectDir: string): string {
     // Ignore git errors
   }
 
-  const input = `${gitBranch}:${projectDir}`;
+  const input = suffix ? `${gitBranch}:${projectDir}:${suffix}` : `${gitBranch}:${projectDir}`;
   const hash = crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
 
-  return `${gitBranch.replace(/[^a-zA-Z0-9-]/g, "-")}-${hash}`;
+  const sanitizedBranch = gitBranch.replace(/[^a-zA-Z0-9-]/g, "-");
+  const sanitizedSuffix = suffix ? `-${suffix.replace(/[^a-zA-Z0-9-]/g, "-")}` : "";
+
+  return `${sanitizedBranch}${sanitizedSuffix}-${hash}`;
 }
 
 /**
@@ -211,9 +219,6 @@ function extractZip(zipPath: string, destDir: string): Promise<void> {
   });
 }
 
-/** Default cache TTL: 1 week in milliseconds */
-const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
 /**
  * Options for downloading the Convex binary.
  */
@@ -221,9 +226,8 @@ export interface DownloadConvexBinaryOptions {
   /**
    * How long to use a cached binary before checking for updates.
    * Set to 0 to always check for updates.
-   * @default 604800000 (1 week in ms)
    */
-  cacheTtlMs?: number;
+  cacheTtlMs: number;
 }
 
 /**
@@ -283,9 +287,10 @@ function findCachedBinary(binaryDir: string, cacheTtlMs: number): string | null 
  * @returns Path to the binary executable
  */
 export async function downloadConvexBinary(
-  options: DownloadConvexBinaryOptions = {},
+  options: DownloadConvexBinaryOptions,
+  logger: Logger,
 ): Promise<string> {
-  const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+  const cacheTtlMs = options.cacheTtlMs;
   const isWindows = process.platform === "win32";
   const target = getPlatformTarget();
 
@@ -316,15 +321,15 @@ export async function downloadConvexBinary(
   }
 
   const zipPath = path.join(binaryDir, asset.name);
-  console.log(`Downloading Convex backend ${version}...`);
+  logger.info(`Downloading Convex backend ${version}...`);
   await downloadFile(asset.browser_download_url, zipPath);
-  console.log(`Downloaded: ${asset.name}`);
+  logger.info(`Downloaded: ${asset.name}`);
 
   await extractZip(zipPath, binaryDir);
   const extracted = path.join(binaryDir, `convex-local-backend${isWindows ? ".exe" : ""}`);
   await fsp.rename(extracted, binaryPath);
   if (!isWindows) fs.chmodSync(binaryPath, 0o755);
   await fsp.rm(zipPath);
-  console.log(`Binary ready at: ${binaryPath}`);
+  logger.info(`Binary ready at: ${binaryPath}`);
   return binaryPath;
 }

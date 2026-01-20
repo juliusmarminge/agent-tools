@@ -8,6 +8,10 @@ export default defineConfig({
     convexLocal({
       // reset: true,
       stdio: "ignore",
+      stateIdSuffix: process.env.STATE_SUFFIX,
+      envVars: (vitePort) => ({
+        SITE_URL: `http://localhost:${vitePort}`,
+      }),
     }),
   ],
 });

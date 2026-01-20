@@ -87,7 +87,12 @@ export class ConvexBackend {
     fs.mkdirSync(storageDir, { recursive: true });
 
     const sqlitePath = path.join(backendDir, "convex_local_backend.sqlite3");
-    const convexBinary = await downloadConvexBinary();
+    const convexBinary = await downloadConvexBinary(
+      {
+        cacheTtlMs: 7 * 24 * 60 * 60 * 1000, // 1 week in ms
+      },
+      this.logger,
+    );
 
     this.process = childProcess.spawn(
       convexBinary,

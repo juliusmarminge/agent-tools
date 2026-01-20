@@ -55,42 +55,50 @@ export interface ConvexFunctionCall {
   /** The function path (e.g., "myModule:myFunction" or "seed:default") */
   name: string;
   /** Arguments to pass to the function */
-  args?: Record<string, unknown>;
+  args?: Record<string, unknown> | undefined;
 }
 
 export interface ConvexLocalOptions {
   /** The instance name for the Convex backend (defaults to "convex-local") */
-  instanceName?: string;
+  instanceName?: string | undefined;
   /** The instance secret for the Convex backend (auto-generated if not provided) */
-  instanceSecret?: string;
+  instanceSecret?: string | undefined;
   /** The admin key for authenticating with the Convex backend (auto-generated if not provided) */
-  adminKey?: string;
+  adminKey?: string | undefined;
   /** Port for the Convex backend (dynamically assigned if not provided, starting from 3210) */
-  port?: number;
+  port?: number | undefined;
   /** Port for the Convex site proxy / HTTP actions (dynamically assigned if not provided) */
-  siteProxyPort?: number;
+  siteProxyPort?: number | undefined;
   /** The project directory containing the Convex functions (defaults to cwd) */
-  projectDir?: string;
+  projectDir?: string | undefined;
+  /**
+   * Optional suffix to include in the stateId hash.
+   * Use this to run multiple unique backend instances even when cwd and git branch are the same.
+   */
+  stateIdSuffix?: string | undefined;
   /** Reset backend state before starting (delete existing data) */
-  reset?: boolean;
+  reset?: boolean | undefined;
   /**
    * Environment variables to set on the backend.
    * Can be a static object or a function that receives the Vite port.
    */
   envVars?:
     | Record<string, string>
-    | ((vitePort: number) => Record<string, string> | Promise<Record<string, string>>);
+    | ((vitePort: number) => Record<string, string> | Promise<Record<string, string>>)
+    | undefined;
   /** File watching configuration */
-  watch?: {
-    /** Glob patterns to watch (defaults to convex/*.ts and convex/**\/*.ts) */
-    patterns?: string[];
-    /** Glob patterns to ignore (defaults to convex/_generated/**) */
-    ignore?: string[];
-    /** Debounce delay in milliseconds (defaults to 500) */
-    debounceMs?: number;
-  };
+  watch?:
+    | {
+        /** Glob patterns to watch (defaults to convex/*.ts and convex/**\/*.ts) */
+        patterns?: string[] | undefined;
+        /** Glob patterns to ignore (defaults to convex/_generated/**) */
+        ignore?: string[] | undefined;
+        /** Debounce delay in milliseconds (defaults to 500) */
+        debounceMs?: number | undefined;
+      }
+    | undefined;
   /** How to handle stdio from the backend process */
-  stdio?: "inherit" | "ignore";
+  stdio?: "inherit" | "ignore" | undefined;
   /**
    * Functions to run after the backend is ready (after initial deploy).
    * Useful for seeding data or running initialization scripts.
@@ -103,7 +111,7 @@ export interface ConvexLocalOptions {
    * ]
    * ```
    */
-  onReady?: ConvexFunctionCall[];
+  onReady?: ConvexFunctionCall[] | undefined;
 }
 
 /**
@@ -183,16 +191,16 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
   const debouncedDeploy = debounce(deploy, debounceMs);
 
-  // Find available ports - use provided ports or find unused ones dynamically
-  const port = options.port ?? findUnusedPortSync(3210);
+  // Find available ports in the ephemeral range - use provided ports or find unused ones dynamically
+  const port = options.port ?? findUnusedPortSync(Math.floor(Math.random() * 10000) + 3210);
   const siteProxyPort = options.siteProxyPort ?? findUnusedPortSync(port + 1);
   const backendUrl = `http://localhost:${port}`;
   const siteUrl = `http://localhost:${siteProxyPort}`;
 
-  logger.info(`Using ports: backend=${port}, siteProxy=${siteProxyPort}`);
+  logger.info(`Using ports: backend=${port}, siteProxy=${siteProxyPort}`, { timestamp: true });
 
-  // Compute deterministic state directory based on git branch + cwd
-  const stateId = computeStateId(projectDir);
+  // Compute deterministic state directory based on git branch + cwd + optional suffix
+  const stateId = computeStateId(projectDir, options.stateIdSuffix);
   const backendDir = path.join(projectDir, ".convex", stateId);
 
   return {
@@ -346,6 +354,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
               for (const [name, value] of Object.entries(envVars)) {
                 await backend.setEnv(name, value);
+                logger.info(`Set environment variable: ${name} = ${value}`, { timestamp: true });
               }
             }
 
@@ -379,11 +388,17 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
         })();
       };
 
-      // Get Vite port for envVars callback (we use fixed Convex ports regardless)
-      const vitePort = server.config.server.port ?? 3000;
-
-      // Delay initialization to ensure Vite has completed its internal setup
-      setTimeout(() => startBackendInit(vitePort), BACKEND_INIT_DELAY_MS);
+      // Delay initialization to ensure Vite has completed its internal setup.
+      // We get the actual Vite port from httpServer.address() since server.config.server.port
+      // only shows the configured port, not the actual port if Vite had to find an available one.
+      setTimeout(() => {
+        const address = server.httpServer?.address();
+        const vitePort =
+          address && typeof address === "object"
+            ? address.port
+            : (server.config.server.port ?? 5173);
+        startBackendInit(vitePort);
+      }, BACKEND_INIT_DELAY_MS);
     },
   };
 }
