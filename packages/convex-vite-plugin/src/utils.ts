@@ -2,7 +2,6 @@ import * as ChildProcess from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
-import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -58,42 +57,38 @@ export function matchPattern(filePath: string, pattern: string): boolean {
 }
 
 /**
- * Check if a port is available by attempting to bind to it.
+ * Check if a port is available synchronously using platform-specific commands.
  */
-function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-
-    server.once("error", () => {
-      resolve(false);
+function isPortAvailableSync(port: number): boolean {
+  if (process.platform === "win32") {
+    const result = ChildProcess.spawnSync("netstat", ["-an"], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
     });
+    if (result.status !== 0) return true; // Assume available if command fails
+    return !result.stdout?.includes(`:${port} `);
+  }
 
-    server.once("listening", () => {
-      server.close(() => {
-        resolve(true);
-      });
-    });
-
-    server.listen(port, "127.0.0.1");
+  // macOS and Linux: use lsof
+  const result = ChildProcess.spawnSync("lsof", ["-i", `:${port}`, "-sTCP:LISTEN"], {
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
   });
+  // If lsof returns nothing (exit 1) or empty output, port is available
+  return result.status !== 0 || !result.stdout?.trim();
 }
 
 /**
- * Find an unused port in the ephemeral range.
- * Actually checks if the port is available before returning.
+ * Find an unused port synchronously, starting from a given port.
+ * Useful for Vite plugin initialization where async is not allowed.
  */
-export async function findUnusedPort(): Promise<number> {
-  const minPort = 10000;
-  const maxPort = 60000;
-  const maxAttempts = 100;
-
+export function findUnusedPortSync(startPort = 10000, maxAttempts = 100): number {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const port = minPort + Math.floor(Math.random() * (maxPort - minPort));
-    if (await isPortAvailable(port)) {
+    const port = startPort + attempt;
+    if (isPortAvailableSync(port)) {
       return port;
     }
   }
-
   throw new Error(`Could not find an available port after ${maxAttempts} attempts`);
 }
 
@@ -216,23 +211,109 @@ function extractZip(zipPath: string, destDir: string): Promise<void> {
   });
 }
 
+/** Default cache TTL: 1 week in milliseconds */
+const DEFAULT_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Options for downloading the Convex binary.
+ */
+export interface DownloadConvexBinaryOptions {
+  /**
+   * How long to use a cached binary before checking for updates.
+   * Set to 0 to always check for updates.
+   * @default 604800000 (1 week in ms)
+   */
+  cacheTtlMs?: number;
+}
+
+/**
+ * Find the most recently downloaded binary in the cache directory.
+ * Returns the path if found and not expired, null otherwise.
+ */
+function findCachedBinary(binaryDir: string, cacheTtlMs: number): string | null {
+  const isWindows = process.platform === "win32";
+  const suffix = isWindows ? ".exe" : "";
+  const prefix = "convex-local-backend-precompiled-";
+
+  try {
+    if (!fs.existsSync(binaryDir)) return null;
+
+    const files = fs.readdirSync(binaryDir);
+    const binaries = files.filter(
+      (f) => f.startsWith(prefix) && f.endsWith(suffix) && !f.endsWith(".zip"),
+    );
+
+    if (binaries.length === 0) return null;
+
+    // Find the most recently modified binary
+    let newestBinary: string | null = null;
+    let newestMtime = 0;
+
+    for (const binary of binaries) {
+      const binaryPath = path.join(binaryDir, binary);
+      const stat = fs.statSync(binaryPath);
+      if (stat.mtimeMs > newestMtime) {
+        newestMtime = stat.mtimeMs;
+        newestBinary = binaryPath;
+      }
+    }
+
+    if (!newestBinary) return null;
+
+    // Check if cache is still valid
+    const age = Date.now() - newestMtime;
+    if (age < cacheTtlMs) {
+      return newestBinary;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Download the Convex local backend binary for the current platform.
  * Caches the binary in ~/.convex-local-backend/releases for reuse.
+ *
+ * If a cached binary exists and is within the cache TTL, it will be used
+ * without checking GitHub for updates. This avoids rate limiting issues.
+ *
+ * @param options - Configuration options
+ * @returns Path to the binary executable
  */
-export async function downloadConvexBinary(): Promise<string> {
+export async function downloadConvexBinary(
+  options: DownloadConvexBinaryOptions = {},
+): Promise<string> {
+  const cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const isWindows = process.platform === "win32";
   const target = getPlatformTarget();
-
-  const releases = await fetchConvexReleases();
-  const { asset, version } = findAsset(releases, target);
 
   const binaryDir = path.join(os.homedir(), ".convex-local-backend", "releases");
   fs.mkdirSync(binaryDir, { recursive: true });
 
+  // Check for cached binary first (avoids GitHub API calls)
+  if (cacheTtlMs > 0) {
+    const cachedBinary = findCachedBinary(binaryDir, cacheTtlMs);
+    if (cachedBinary) {
+      return cachedBinary;
+    }
+  }
+
+  // No valid cache, fetch from GitHub
+  const releases = await fetchConvexReleases();
+  const { asset, version } = findAsset(releases, target);
+
   const binaryName = `convex-local-backend-${version}${isWindows ? ".exe" : ""}`;
   const binaryPath = path.join(binaryDir, binaryName);
-  if (fs.existsSync(binaryPath)) return binaryPath;
+
+  // Check if this specific version already exists
+  if (fs.existsSync(binaryPath)) {
+    // Touch the file to update mtime for cache purposes
+    const now = new Date();
+    fs.utimesSync(binaryPath, now, now);
+    return binaryPath;
+  }
 
   const zipPath = path.join(binaryDir, asset.name);
   console.log(`Downloading Convex backend ${version}...`);

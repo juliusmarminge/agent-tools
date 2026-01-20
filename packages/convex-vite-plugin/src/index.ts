@@ -6,10 +6,23 @@ import { createLogger } from "vite";
 
 import { ConvexBackend } from "./backend.ts";
 import { generateKeyPair } from "./keys.ts";
-import { computeStateId, debounce, matchPattern } from "./utils.ts";
+import { computeStateId, debounce, findUnusedPortSync, matchPattern } from "./utils.ts";
 
 // Create a Vite-style logger with [convex] prefix
 const logger: Logger = createLogger("info", { prefix: "[convex]" });
+
+// Track the running backend to handle Vite restarts.
+// When vite.config.ts changes, Vite recreates the plugin, orphaning the old backend.
+// This module-level variable lets us find and stop it before starting a new one.
+let runningBackend: ConvexBackend | null = null;
+
+// Delay before starting backend initialization to let Vite complete its internal setup.
+// This is necessary because Vite's restart mechanism can leave the server in a transitional
+// state where httpServer references the OLD server being shut down.
+const BACKEND_INIT_DELAY_MS = 500;
+
+// Track if we've registered process exit handlers (only need to do this once per process)
+let exitHandlersRegistered = false;
 
 interface PersistedKeys {
   instanceName: string;
@@ -52,6 +65,10 @@ export interface ConvexLocalOptions {
   instanceSecret?: string;
   /** The admin key for authenticating with the Convex backend (auto-generated if not provided) */
   adminKey?: string;
+  /** Port for the Convex backend (dynamically assigned if not provided, starting from 3210) */
+  port?: number;
+  /** Port for the Convex site proxy / HTTP actions (dynamically assigned if not provided) */
+  siteProxyPort?: number;
   /** The project directory containing the Convex functions (defaults to cwd) */
   projectDir?: string;
   /** Reset backend state before starting (delete existing data) */
@@ -166,85 +183,41 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
   const debouncedDeploy = debounce(deploy, debounceMs);
 
+  // Find available ports - use provided ports or find unused ones dynamically
+  const port = options.port ?? findUnusedPortSync(3210);
+  const siteProxyPort = options.siteProxyPort ?? findUnusedPortSync(port + 1);
+  const backendUrl = `http://localhost:${port}`;
+  const siteUrl = `http://localhost:${siteProxyPort}`;
+
+  logger.info(`Using ports: backend=${port}, siteProxy=${siteProxyPort}`);
+
+  // Compute deterministic state directory based on git branch + cwd
+  const stateId = computeStateId(projectDir);
+  const backendDir = path.join(projectDir, ".convex", stateId);
+
   return {
     name: "vite-plugin-convex-local",
     enforce: "pre",
 
-    async config(config, env) {
+    config(config, env) {
       // Only activate in dev mode
       if (env.command !== "serve") return;
 
-      // Compute deterministic state directory based on git branch + cwd
-      const stateId = computeStateId(projectDir);
-      const backendDir = path.join(projectDir, ".convex", stateId);
-      const keysPath = path.join(backendDir, "keys.json");
-      const stateExists = fs.existsSync(backendDir);
-
-      // Handle reset - delete existing state if requested
-      if (options.reset && stateExists) {
-        logger.info("Resetting backend state...", { timestamp: true });
-        fs.rmSync(backendDir, { recursive: true, force: true });
+      // Defer killing the old backend to avoid blocking Vite's config phase
+      if (runningBackend?.process?.pid) {
+        const pid = runningBackend.process.pid;
+        runningBackend = null;
+        // Kill async via setImmediate to not block config()
+        setImmediate(() => {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // Process might already be dead
+          }
+        });
       }
 
-      // Load or generate keys
-      let keys: PersistedKeys;
-      const existingKeys = loadPersistedKeys(keysPath);
-
-      if (existingKeys && !options.reset) {
-        // Use existing keys for this state directory
-        keys = existingKeys;
-        logger.info("Loaded persisted keys", { timestamp: true });
-      } else if (options.instanceSecret && options.adminKey) {
-        // Use explicitly provided keys
-        keys = {
-          instanceName: options.instanceName ?? "convex-local",
-          instanceSecret: options.instanceSecret,
-          adminKey: options.adminKey,
-        };
-        savePersistedKeys(keysPath, keys);
-        logger.info("Using provided keys", { timestamp: true });
-      } else {
-        // Generate new keys
-        const instanceName = options.instanceName ?? "convex-local";
-        const generated = generateKeyPair(instanceName);
-        keys = {
-          instanceName,
-          instanceSecret: generated.instanceSecret,
-          adminKey: generated.adminKey,
-        };
-        savePersistedKeys(keysPath, keys);
-        logger.info("Generated new keys", { timestamp: true });
-      }
-
-      backend = new ConvexBackend(
-        {
-          instanceName: keys.instanceName,
-          instanceSecret: keys.instanceSecret,
-          adminKey: keys.adminKey,
-          projectDir,
-          stdio: options.stdio ?? "ignore",
-        },
-        logger,
-      );
-
-      // Override the random backendDir with our deterministic one
-      backend.backendDir = backendDir;
-
-      const isResume = stateExists && !options.reset;
-      logger.info(
-        isResume
-          ? `Resuming backend from existing state (${stateId})...`
-          : `Starting fresh backend (${stateId})...`,
-        { timestamp: true },
-      );
-
-      await backend.startBackend(backendDir);
-      logger.info(`Backend running on port ${backend.port}`, { timestamp: true });
-
-      const backendUrl = `http://localhost:${backend.port}`;
-      const siteUrl = `http://localhost:${backend.siteProxyPort}`;
-
-      // Return config modifications to inject the URLs
+      // Return config modifications to inject the URLs (synchronous!)
       return {
         define: {
           ...config.define,
@@ -255,26 +228,24 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
     },
 
     configureServer(server: ViteDevServer) {
-      if (!backend) return;
-
-      const cleanup = async () => {
-        if (backend) {
-          // Don't delete the state directory - preserve for next run
-          await backend.stop(false);
-          backend = null;
-        }
-      };
-
-      server.httpServer?.on("close", () => {
-        void cleanup();
-      });
-
-      process.on("SIGINT", () => {
-        void cleanup().then(() => process.exit(0));
-      });
-      process.on("SIGTERM", () => {
-        void cleanup().then(() => process.exit(0));
-      });
+      // Register process exit handlers once to clean up the backend on shutdown.
+      // We use a module-level flag because configureServer is called on every restart,
+      // and we don't want to accumulate handlers.
+      if (!exitHandlersRegistered) {
+        exitHandlersRegistered = true;
+        const handleExit = () => {
+          if (runningBackend?.process?.pid) {
+            try {
+              process.kill(runningBackend.process.pid, "SIGKILL");
+            } catch {
+              // Process might already be dead
+            }
+          }
+          process.exit(0);
+        };
+        process.once("SIGINT", handleExit);
+        process.once("SIGTERM", handleExit);
+      }
 
       const handleFileChange = (filePath: string) => {
         if (shouldWatch(filePath)) {
@@ -294,59 +265,125 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       server.watcher.on("add", handleFileChange);
       server.watcher.on("unlink", handleFileChange);
 
-      // Wait for the server to actually be listening to get the real port
-      server.httpServer?.once("listening", () => {
-        const addr = server.httpServer?.address();
-        const vitePort =
-          addr && typeof addr === "object" ? addr.port : (server.config.server.port ?? 3000);
-
-        logger.info(`Vite server port: ${vitePort}`, { timestamp: true });
-
-        // Set env vars and deploy asynchronously
+      // Start backend initialization asynchronously (doesn't block Vite)
+      const startBackendInit = (vitePort: number) => {
         void (async () => {
-          if (!backend) return;
+          try {
+            const keysPath = path.join(backendDir, "keys.json");
+            const stateExists = fs.existsSync(backendDir);
 
-          // Set IS_TEST env var
-          await backend.setEnv("IS_TEST", "true");
-
-          // Set user-provided env vars
-          if (options.envVars) {
-            const envVars =
-              typeof options.envVars === "function"
-                ? await options.envVars(vitePort)
-                : options.envVars;
-
-            for (const [name, value] of Object.entries(envVars)) {
-              await backend.setEnv(name, value);
+            // Handle reset - delete existing state if requested
+            if (options.reset && stateExists) {
+              logger.info("Resetting backend state...", { timestamp: true });
+              fs.rmSync(backendDir, { recursive: true, force: true });
             }
-          }
 
-          // Initial deploy
-          deploy();
+            // Load or generate keys
+            let keys: PersistedKeys;
+            const existingKeys = loadPersistedKeys(keysPath);
 
-          // Run onReady functions (e.g., seed scripts)
-          if (options.onReady && options.onReady.length > 0) {
-            logger.info(`Running ${options.onReady.length} startup function(s)...`, {
-              timestamp: true,
-            });
-            for (const fn of options.onReady) {
-              try {
-                logger.info(`Running ${fn.name}...`, { timestamp: true });
-                await backend.runFunction(fn.name, fn.args ?? {});
-                logger.info(`${fn.name} completed`, { timestamp: true });
-              } catch (error) {
-                logger.error(`Failed to run ${fn.name}:`, {
-                  timestamp: true,
-                  error: error as Error,
-                });
+            if (existingKeys && !options.reset) {
+              keys = existingKeys;
+              logger.info("Loaded persisted keys", { timestamp: true });
+            } else if (options.instanceSecret && options.adminKey) {
+              keys = {
+                instanceName: options.instanceName ?? "convex-local",
+                instanceSecret: options.instanceSecret,
+                adminKey: options.adminKey,
+              };
+              savePersistedKeys(keysPath, keys);
+              logger.info("Using provided keys", { timestamp: true });
+            } else {
+              const instanceName = options.instanceName ?? "convex-local";
+              const generated = generateKeyPair(instanceName);
+              keys = {
+                instanceName,
+                instanceSecret: generated.instanceSecret,
+                adminKey: generated.adminKey,
+              };
+              savePersistedKeys(keysPath, keys);
+              logger.info("Generated new keys", { timestamp: true });
+            }
+
+            // Create and start backend
+            backend = new ConvexBackend(
+              {
+                instanceName: keys.instanceName,
+                instanceSecret: keys.instanceSecret,
+                adminKey: keys.adminKey,
+                port,
+                siteProxyPort,
+                projectDir,
+                stdio: options.stdio ?? "ignore",
+              },
+              logger,
+            );
+            backend.backendDir = backendDir;
+
+            const isResume = stateExists && !options.reset;
+            logger.info(
+              isResume
+                ? `Resuming backend from existing state (${stateId})...`
+                : `Starting fresh backend (${stateId})...`,
+              { timestamp: true },
+            );
+
+            await backend.spawn(backendDir);
+            runningBackend = backend;
+
+            // Wait for backend to be ready before making API calls
+            await backend.waitForReady();
+
+            // Set IS_TEST env var
+            await backend.setEnv("IS_TEST", "true");
+
+            // Set user-provided env vars
+            if (options.envVars) {
+              const envVars =
+                typeof options.envVars === "function"
+                  ? await options.envVars(vitePort)
+                  : options.envVars;
+
+              for (const [name, value] of Object.entries(envVars)) {
+                await backend.setEnv(name, value);
               }
             }
-          }
 
-          const backendUrl = `http://localhost:${backend.port}`;
-          logger.info(`Backend ready at ${backendUrl}`, { timestamp: true });
+            // Initial deploy
+            deploy();
+
+            // Run onReady functions (e.g., seed scripts)
+            if (options.onReady && options.onReady.length > 0) {
+              logger.info(`Running ${options.onReady.length} startup function(s)...`, {
+                timestamp: true,
+              });
+              for (const fn of options.onReady) {
+                try {
+                  logger.info(`Running ${fn.name}...`, { timestamp: true });
+                  await backend.runFunction(fn.name, fn.args ?? {});
+                  logger.info(`${fn.name} completed`, { timestamp: true });
+                } catch (error) {
+                  logger.error(`Failed to run ${fn.name}:`, {
+                    timestamp: true,
+                    error: error as Error,
+                  });
+                }
+              }
+            }
+
+            const backendUrl = `http://localhost:${backend.port}`;
+            logger.info(`Backend ready at ${backendUrl}`, { timestamp: true });
+          } catch (error) {
+            logger.error(`Backend initialization failed: ${String(error)}`, { timestamp: true });
+          }
         })();
-      });
+      };
+
+      // Get Vite port for envVars callback (we use fixed Convex ports regardless)
+      const vitePort = server.config.server.port ?? 3000;
+
+      // Delay initialization to ensure Vite has completed its internal setup
+      setTimeout(() => startBackendInit(vitePort), BACKEND_INIT_DELAY_MS);
     },
   };
 }
@@ -358,3 +395,10 @@ export { ConvexBackend, type ConvexBackendOptions } from "./backend.ts";
 
 // Re-export key utilities for manual key generation
 export { generateInstanceSecret, generateAdminKey, generateKeyPair } from "./keys.ts";
+
+declare global {
+  interface ImportMetaEnv {
+    VITE_CONVEX_URL: string;
+    VITE_CONVEX_SITE_URL: string;
+  }
+}

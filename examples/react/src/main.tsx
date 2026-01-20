@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";

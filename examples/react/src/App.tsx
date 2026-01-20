@@ -12,7 +12,7 @@ export function App() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
-    sendMessage({ content: input });
+    void sendMessage({ content: input });
     setInput("");
   };
 

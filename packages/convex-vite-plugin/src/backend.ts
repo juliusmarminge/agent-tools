@@ -8,7 +8,7 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
 import { generateKeyPair } from "./keys.ts";
-import { downloadConvexBinary, findUnusedPort, waitForHttpOk } from "./utils.ts";
+import { downloadConvexBinary, waitForHttpOk } from "./utils.ts";
 
 /**
  * Options for creating a ConvexBackend instance.
@@ -20,6 +20,10 @@ export interface ConvexBackendOptions {
   instanceSecret?: string | undefined;
   /** The admin key for authenticating with the Convex backend (auto-generated if not provided) */
   adminKey?: string | undefined;
+  /** Port for the backend (dynamically assigned if not provided, starting from 3210) */
+  port?: number | undefined;
+  /** Port for the site proxy (dynamically assigned if not provided) */
+  siteProxyPort?: number | undefined;
   /** The project directory containing the Convex functions (defaults to cwd) */
   projectDir?: string | undefined;
   /** How to handle stdio from the backend process */
@@ -32,11 +36,11 @@ export interface ConvexBackendOptions {
  */
 export class ConvexBackend {
   /** The port the backend is listening on */
-  public port?: number;
+  public port: number | undefined;
   /** The port for the site proxy */
-  public siteProxyPort?: number;
+  public siteProxyPort: number | undefined;
   /** The backend process */
-  public process?: ChildProcess;
+  public process: ChildProcess | undefined;
   /** The backend URL */
   public backendUrl?: string;
 
@@ -54,6 +58,11 @@ export class ConvexBackend {
     this.backendDir = path.join(this.projectDir, ".convex", crypto.randomBytes(16).toString("hex"));
     this.stdio = options.stdio ?? "inherit";
 
+    // Use fixed ports if provided
+    this.port = options.port ?? 3210;
+    this.siteProxyPort = options.siteProxyPort ?? 3211;
+    this.backendUrl = `http://127.0.0.1:${this.port}`;
+
     // Auto-generate keys if not provided
     this.instanceName = options.instanceName ?? "convex-local";
 
@@ -68,18 +77,17 @@ export class ConvexBackend {
   }
 
   /**
-   * Start the backend process.
+   * Spawn the backend process.
+   * Returns immediately after spawning - does not wait for the backend to be ready.
+   * Call waitForReady() to ensure the backend is accepting connections.
    * @param backendDir - The directory to store backend state
    */
-  async startBackend(backendDir: string): Promise<void> {
+  async spawn(backendDir: string): Promise<void> {
     const storageDir = path.join(backendDir, "convex_local_storage");
     fs.mkdirSync(storageDir, { recursive: true });
 
     const sqlitePath = path.join(backendDir, "convex_local_backend.sqlite3");
     const convexBinary = await downloadConvexBinary();
-
-    this.port = await findUnusedPort();
-    this.siteProxyPort = await findUnusedPort();
 
     this.process = childProcess.spawn(
       convexBinary,
@@ -102,19 +110,35 @@ export class ConvexBackend {
       },
     );
 
-    await this.healthCheck();
-
     if (!this.process.pid) {
       throw new Error("Convex process failed to start - no PID assigned");
     }
 
-    this.backendUrl = `http://127.0.0.1:${this.port}`;
+    this.logger.info(`Backend spawned on port ${this.port} (waiting for ready...)`);
+  }
 
-    this.logger.info("Backend started successfully");
+  /**
+   * Wait for the backend to be ready to accept connections.
+   * Call this after spawn() before making any API calls.
+   */
+  async waitForReady(): Promise<void> {
+    await this.healthCheck();
+
+    this.logger.info("Backend ready", { timestamp: true });
     this.logger.info(`  Instance name:   ${this.instanceName}`);
     this.logger.info(`  Instance secret: ${this.instanceSecret}`);
     this.logger.info(`  Admin key:       ${this.adminKey}`);
     this.logger.info(`  Backend URL:     ${this.backendUrl}`);
+  }
+
+  /**
+   * Start the backend process and wait for it to be ready.
+   * Convenience method that combines spawn() and waitForReady().
+   * @param backendDir - The directory to store backend state
+   */
+  async startBackend(backendDir: string): Promise<void> {
+    await this.spawn(backendDir);
+    await this.waitForReady();
   }
 
   private async healthCheck(): Promise<void> {
@@ -219,20 +243,17 @@ export class ConvexBackend {
   async stop(cleanup = true): Promise<void> {
     if (!this.process || this.process.pid === undefined) return;
 
-    this.logger.info("Stopping backend...");
-
     const pid = this.process.pid;
     try {
-      process.kill(pid, "SIGTERM");
-    } catch (error) {
-      this.logger.error(`Failed to terminate Convex backend gracefully:`, {
-        timestamp: true,
-        error: error as Error,
-      });
+      // Use SIGKILL for immediate termination
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Process might already be dead
     }
+    this.process = undefined;
 
     if (cleanup) {
-      this.logger.info("Cleaning up backend files...");
+      this.logger.info("Cleaning up backend files...", { timestamp: true });
       await fsp.rm(this.backendDir, { recursive: true });
     }
   }
