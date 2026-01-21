@@ -23,7 +23,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
       - uses: ./.github/setup
-      - run: bun turbo build --filter=convex-vite-plugin
+      - run: bun turbo build --filter=convex-vite-plugin --filter=oxlint-plugin-convex
       - run: bun lint
       - run: bun fmt --check
 
