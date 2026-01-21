@@ -1,17 +1,15 @@
-import type { Plugin, ViteDevServer } from "vite";
+import type { Logger, Plugin, ViteDevServer } from "vite";
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import type { ConvexLogger } from "./logger.ts";
+import { createLogger } from "vite";
 
 import { ConvexBackend } from "./backend.ts";
 import { generateKeyPair } from "./keys.ts";
-import { createConvexLogger } from "./logger.ts";
 import { computeStateId, debounce, findUnusedPortSync, matchPattern } from "./utils.ts";
 
-// Create a logger with [convex] prefix
-const logger: ConvexLogger = createConvexLogger("info");
+// Create a Vite logger with [convex] prefix for the plugin
+const logger: Logger = createLogger("info", { prefix: "[convex]" });
 
 // Track the running backend to handle Vite restarts.
 // When vite.config.ts changes, Vite recreates the plugin, orphaning the old backend.
