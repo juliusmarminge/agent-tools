@@ -1,5 +1,11 @@
 # convex-vite-plugin
 
+## 0.3.1
+
+### Patch Changes
+
+- [#12](https://github.com/juliusmarminge/agent-tools/pull/12) [`898dd1f`](https://github.com/juliusmarminge/agent-tools/commit/898dd1fb0e36f35ef3b457cc774c590232cf2552) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - Improve error logging for deploy and onReady function failures. Error messages are now included in the log output instead of being empty.
+
 ## 0.3.0
 
 ### Minor Changes
