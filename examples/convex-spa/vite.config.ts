@@ -11,7 +11,8 @@ export default defineConfig({
       envVars: (vitePort) => ({
         SITE_URL: `http://localhost:${vitePort}`,
       }),
-      onReady: [{ name: "functions:seed" }],
+      // Seed on startup
+      // onReady: [{ name: "functions:seed" }],
     }),
   ],
 });
