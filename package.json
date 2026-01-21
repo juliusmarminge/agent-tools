@@ -8,11 +8,11 @@
   "type": "module",
   "scripts": {
     "turbo": "turbo --root-turbo-json .config/turbo.jsonc",
-    "build": "bun run turbo run build --filter convex-vite-plugin --filter oxlint-plugin-convex",
+    "build": "bun run turbo run build --filter convex-vite-plugin --filter oxlint-plugin-convex --filter //",
     "clean": "bun run turbo run clean && rm -rf .turbo node_modules",
-    "dev": "bun run turbo watch build test --filter convex-vite-plugin --filter //",
+    "dev": "bun run turbo watch build test --filter convex-vite-plugin --filter oxlint-plugin-convex --filter //",
     "fmt": "oxfmt -c .config/.oxfmtrc.json",
-    "lint": "oxlint -c .config/.oxlintrc.json --type-aware --type-check --deny-warnings --report-unused-disable-directives",
+    "lint": "oxlint --type-aware --type-check --deny-warnings --report-unused-disable-directives",
     "qa": "bun run lint && bun run fmt --check",
     "test": "vitest --silent=passed-only",
     "test:run": "vitest run --silent=passed-only"

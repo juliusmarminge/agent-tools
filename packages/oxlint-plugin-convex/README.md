@@ -33,10 +33,11 @@ Detects Convex functions that are exported but never referenced via `api.module.
 
 #### Options
 
-| Option             | Type       | Description                                            |
-| ------------------ | ---------- | ------------------------------------------------------ |
-| `ignorePatterns`   | `string[]` | Patterns for functions to ignore                       |
-| `ignoreUsageFiles` | `string[]` | Glob patterns for files to exclude from usage scanning |
+| Option             | Type       | Default | Description                                            |
+| ------------------ | ---------- | ------- | ------------------------------------------------------ |
+| `ignorePatterns`   | `string[]` | `[]`    | Patterns for functions to ignore                       |
+| `ignoreUsageFiles` | `string[]` | `[]`    | Glob patterns for files to exclude from usage scanning |
+| `skipDirs`         | `string[]` | `[]`    | Additional directories to skip when scanning           |
 
 #### Pattern Matching
 
@@ -93,6 +94,23 @@ The `ignorePatterns` option supports three formats:
 
 This is useful when you have test files that reference Convex functions for testing purposes, but you don't want those usages to count as "real" usage.
 
+**Skipping additional directories:**
+
+```json
+{
+  "rules": {
+    "convex/no-unused-functions": [
+      "warn",
+      {
+        "skipDirs": ["coverage", ".turbo", "out"]
+      }
+    ]
+  }
+}
+```
+
+This adds to the default list of skipped directories (node_modules, .git, dist, build, .next, .convex, \_generated).
+
 **Combined options:**
 
 ```json
@@ -102,7 +120,8 @@ This is useful when you have test files that reference Convex functions for test
       "warn",
       {
         "ignorePatterns": ["internal.*", "crons.*"],
-        "ignoreUsageFiles": ["**/*.test.ts"]
+        "ignoreUsageFiles": ["**/*.test.ts"],
+        "skipDirs": ["coverage"]
       }
     ]
   }
@@ -158,6 +177,7 @@ import type { RuleOptions } from "oxlint-plugin-convex";
 const options: RuleOptions = {
   ignorePatterns: ["internal.*"],
   ignoreUsageFiles: ["**/*.test.ts"],
+  skipDirs: ["coverage"],
 };
 ```
 

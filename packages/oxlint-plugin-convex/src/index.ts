@@ -24,7 +24,8 @@
  *         "presence.*",        // Ignore all functions in convex/presence.ts
  *         "foo.bar.*",         // Ignore all functions in convex/foo/bar.ts
  *         "game.get",          // Ignore only game.get
- *         "deleteRoom"         // Ignore deleteRoom in any module
+ *         "deleteRoom",        // Ignore deleteRoom in any module
+ *         "*.seed*"            // Glob: ignore any function containing "seed"
  *       ]
  *     }]
  *   }
@@ -54,6 +55,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { extname, join, relative } from "node:path";
 import { definePlugin, defineRule } from "oxlint";
 
+import type { GlobMatcher } from "./utils.ts";
+
+import { buildGlobMatchers, isIgnored, matchesAnyGlob, normalizePath } from "./utils.ts";
+
 /**
  * Options for the `convex/no-unused-functions` rule.
  */
@@ -63,6 +68,7 @@ export type RuleOptions = {
    * - `"module.*"` - Ignore all functions in a module
    * - `"module.function"` - Ignore a specific function
    * - `"function"` - Ignore a function in any module
+   * - `"*.seed*"` - Glob pattern with wildcards (* matches any chars, ? matches single char)
    */
   ignorePatterns?: string[];
   /**
@@ -70,15 +76,31 @@ export type RuleOptions = {
    * Useful for excluding test files from the usage scan.
    */
   ignoreUsageFiles?: string[];
+  /**
+   * Additional directories to skip when scanning for files.
+   * These are added to the default list: node_modules, .git, dist, build, .next, .convex, _generated
+   */
+  skipDirs?: string[];
 };
 
 /**
  * Get all project files with the given extensions, excluding common directories.
  */
+const DEFAULT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const DEFAULT_SKIP_DIRS = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".convex",
+  "_generated",
+];
+
 function getProjectFiles(
   dir: string,
-  extensions = [".ts", ".tsx"],
-  skipDirs = ["node_modules", ".git", "dist", "build", ".next", ".convex", "_generated"],
+  extensions = DEFAULT_EXTENSIONS,
+  skipDirs = DEFAULT_SKIP_DIRS,
 ): string[] {
   try {
     return readdirSync(dir, { withFileTypes: true, recursive: true })
@@ -119,79 +141,6 @@ function getConvexModulePath(filePath: string): string | null {
   if (!isConvexFile) return null;
   const match = normalized.match(/\/convex\/(.+)\.(ts|js|tsx|jsx)$/);
   return match ? match[1].replace(/\//g, ".") : null;
-}
-
-/**
- * Check if key matches pattern:
- * - `"module.*"` -> matches all in module
- * - `"module.function"` -> exact match
- * - `"function"` -> matches function in any module
- */
-function isIgnored(key: string, patterns: string[]): boolean {
-  return patterns.some(
-    (pattern) =>
-      key === pattern || (pattern.endsWith(".*") && key.startsWith(pattern.slice(0, -1))),
-  );
-}
-
-function normalizePath(filePath: string): string {
-  return filePath.replace(/\\/g, "/");
-}
-
-function globToRegExp(pattern: string): RegExp {
-  const normalized = normalizePath(pattern);
-  const regexSpecialChars = /[\\^$.*+?()[\]{}|]/;
-  let regex = "^";
-  for (let i = 0; i < normalized.length; i++) {
-    const char = normalized[i];
-    if (char === "*") {
-      if (normalized[i + 1] === "*") {
-        while (normalized[i + 1] === "*") i++;
-        regex += ".*";
-      } else {
-        regex += "[^/]*";
-      }
-      continue;
-    }
-    if (char === "?") {
-      regex += "[^/]";
-      continue;
-    }
-    if (regexSpecialChars.test(char)) {
-      regex += `\\${char}`;
-      continue;
-    }
-    regex += char;
-  }
-  regex += "$";
-  return new RegExp(regex);
-}
-
-type GlobMatcher = {
-  pattern: string;
-  regex: RegExp;
-  hasSlash: boolean;
-};
-
-function buildGlobMatchers(patterns: string[]): GlobMatcher[] {
-  return patterns.map((pattern) => ({
-    pattern,
-    regex: globToRegExp(pattern),
-    hasSlash: normalizePath(pattern).includes("/"),
-  }));
-}
-
-function matchesAnyGlob(filePath: string, matchers: GlobMatcher[]): boolean {
-  if (matchers.length === 0) return false;
-  const normalizedPath = normalizePath(filePath);
-  const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
-  for (const matcher of matchers) {
-    const target = matcher.hasSlash ? normalizedPath : baseName;
-    if (matcher.regex.test(target)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -236,12 +185,18 @@ export const noUnusedFunctionsRule = defineRule({
           ignorePatterns: {
             type: "array",
             items: { type: "string" },
-            description: 'Patterns to ignore: "module.*", "module.function", or "function"',
+            description:
+              'Patterns to ignore: "module.*", "module.function", "function", or glob patterns like "*.seed*"',
           },
           ignoreUsageFiles: {
             type: "array",
             items: { type: "string" },
             description: "Glob patterns for files whose api usages should be ignored",
+          },
+          skipDirs: {
+            type: "array",
+            items: { type: "string" },
+            description: "Additional directories to skip when scanning",
           },
         },
         additionalProperties: false,
@@ -269,12 +224,13 @@ export const noUnusedFunctionsRule = defineRule({
         const options = (context.options[0] || {}) as RuleOptions;
         ignorePatterns = options.ignorePatterns || [];
         const ignoreUsageFiles = options.ignoreUsageFiles || [];
-        const nextIgnoreUsageKey = JSON.stringify(ignoreUsageFiles);
+        const skipDirs = [...DEFAULT_SKIP_DIRS, ...(options.skipDirs || [])];
+        const nextIgnoreUsageKey = JSON.stringify({ ignoreUsageFiles, skipDirs });
         if (!usages || ignoreUsageKey !== nextIgnoreUsageKey) {
           ignoreUsageKey = nextIgnoreUsageKey;
           ignoreUsageMatchers = buildGlobMatchers(ignoreUsageFiles);
           const nextUsages = new Set<string>();
-          for (const file of getProjectFiles(context.cwd)) {
+          for (const file of getProjectFiles(context.cwd, DEFAULT_EXTENSIONS, skipDirs)) {
             const relativePath = normalizePath(relative(context.cwd, file));
             if (matchesAnyGlob(relativePath, ignoreUsageMatchers)) continue;
             try {
