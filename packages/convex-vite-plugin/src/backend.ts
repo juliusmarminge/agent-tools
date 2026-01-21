@@ -1,5 +1,4 @@
 import type { ChildProcess, StdioOptions } from "node:child_process";
-import type { Logger } from "vite";
 
 import * as childProcess from "node:child_process";
 import * as crypto from "node:crypto";
@@ -7,7 +6,10 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
+import type { ConvexLogger, LogLevel } from "./logger.ts";
+
 import { generateKeyPair } from "./keys.ts";
+import { normalizeLogger } from "./logger.ts";
 import { downloadConvexBinary, waitForHttpOk } from "./utils.ts";
 
 /**
@@ -60,15 +62,43 @@ export class ConvexBackend {
   private readonly instanceName: string;
   private readonly instanceSecret: string;
   private readonly adminKey: string;
-  private readonly logger: Logger;
+  private readonly logger: ConvexLogger;
   private readonly deployTimeout: number;
   private readonly healthCheckTimeout: number;
   private readonly binaryVersion: string | undefined;
   private readonly binaryCacheDir: string | undefined;
   private readonly binaryCacheTtl: number;
 
-  constructor(options: ConvexBackendOptions, logger: Logger) {
-    this.logger = logger;
+  /**
+   * Create a new ConvexBackend instance.
+   *
+   * @param options - Configuration options for the backend
+   * @param logger - Optional logger configuration:
+   *   - `undefined`: Uses default logger at "info" level
+   *   - `LogLevel` string ("error", "warn", "info", "silent"): Uses built-in logger at specified level
+   *   - `ConvexLogger` object: Uses the provided custom logger
+   *
+   * @example
+   * ```ts
+   * // Default logging
+   * new ConvexBackend({})
+   *
+   * // Only show errors
+   * new ConvexBackend({}, "error")
+   *
+   * // Silent mode
+   * new ConvexBackend({}, "silent")
+   *
+   * // Custom logger
+   * new ConvexBackend({}, {
+   *   info: (msg) => myLogger.info(msg),
+   *   warn: (msg) => myLogger.warn(msg),
+   *   error: (msg) => myLogger.error(msg),
+   * })
+   * ```
+   */
+  constructor(options: ConvexBackendOptions, logger?: ConvexLogger | LogLevel) {
+    this.logger = normalizeLogger(logger);
     this.projectDir = options.projectDir ?? process.cwd();
     this.backendDir = path.join(this.projectDir, ".convex", crypto.randomBytes(16).toString("hex"));
     this.stdio = options.stdio ?? "inherit";

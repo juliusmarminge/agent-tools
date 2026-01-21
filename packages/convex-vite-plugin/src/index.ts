@@ -8,7 +8,7 @@ import { ConvexBackend } from "./backend.ts";
 import { generateKeyPair } from "./keys.ts";
 import { computeStateId, debounce, findUnusedPortSync, matchPattern } from "./utils.ts";
 
-// Create a Vite-style logger with [convex] prefix
+// Create a Vite logger with [convex] prefix for the plugin
 const logger: Logger = createLogger("info", { prefix: "[convex]" });
 
 // Track the running backend to handle Vite restarts.
@@ -425,12 +425,6 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 }
 
 export default convexLocal;
-
-// Re-export backend for advanced use cases
-export { ConvexBackend, type ConvexBackendOptions } from "./backend.ts";
-
-// Re-export key utilities for manual key generation
-export { generateInstanceSecret, generateAdminKey, generateKeyPair } from "./keys.ts";
 
 declare global {
   interface ImportMetaEnv {

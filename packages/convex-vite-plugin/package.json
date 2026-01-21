@@ -11,10 +11,14 @@
     ".": {
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
+    },
+    "./lib": {
+      "types": "./dist/lib.d.mts",
+      "default": "./dist/lib.mjs"
     }
   },
   "scripts": {
-    "build": "tsdown src/index.ts --format esm --dts",
+    "build": "tsdown src/index.ts src/lib.ts --format esm --dts",
     "clean": "rm -rf dist node_modules .turbo"
   },
   "dependencies": {
