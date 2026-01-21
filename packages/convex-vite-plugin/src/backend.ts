@@ -222,7 +222,6 @@ export class ConvexBackend {
 
     const backendUrl = `http://localhost:${this.port}`;
 
-    this.logger.info(`Running: bun convex deploy --url ${backendUrl}`, { timestamp: true });
 
     const deployResult = childProcess.spawnSync(
       "bun",
