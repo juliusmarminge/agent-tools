@@ -394,10 +394,8 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                   await backend.runFunction(fn.name, fn.args ?? {});
                   logger.info(`${fn.name} completed`, { timestamp: true });
                 } catch (error) {
-                  logger.error(`Failed to run ${fn.name}:`, {
-                    timestamp: true,
-                    error: error as Error,
-                  });
+                  const errMsg = error instanceof Error ? error.message : String(error);
+                  logger.error(`Failed to run ${fn.name}: ${errMsg}`, { timestamp: true });
                 }
               }
             }
