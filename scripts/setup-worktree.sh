@@ -25,5 +25,8 @@ fi
 # Install dependencies
 bun i
 
+# Run the build
+bun run build
+
 # Install Playwright browsers
 # bun playwright install chromium
