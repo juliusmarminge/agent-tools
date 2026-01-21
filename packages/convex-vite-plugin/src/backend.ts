@@ -222,7 +222,6 @@ export class ConvexBackend {
 
     const backendUrl = `http://localhost:${this.port}`;
 
-
     const deployResult = childProcess.spawnSync(
       "bun",
       ["convex", "deploy", "--admin-key", this.adminKey, "--url", backendUrl],
