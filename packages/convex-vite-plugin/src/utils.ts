@@ -1,4 +1,4 @@
-import type { Logger } from "vite";
+import type { ConvexLogger } from "./logger.ts";
 
 import * as ChildProcess from "node:child_process";
 import * as crypto from "node:crypto";
@@ -313,7 +313,7 @@ function findCachedBinary(binaryDir: string, cacheTtlMs: number): string | null 
  */
 export async function downloadConvexBinary(
   options: DownloadConvexBinaryOptions,
-  logger: Logger,
+  logger: ConvexLogger,
 ): Promise<string> {
   const cacheTtlMs = options.cacheTtlMs;
   const isWindows = process.platform === "win32";

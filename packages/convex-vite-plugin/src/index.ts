@@ -1,15 +1,17 @@
-import type { Logger, Plugin, ViteDevServer } from "vite";
+import type { Plugin, ViteDevServer } from "vite";
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createLogger } from "vite";
+
+import type { ConvexLogger } from "./logger.ts";
 
 import { ConvexBackend } from "./backend.ts";
 import { generateKeyPair } from "./keys.ts";
+import { createConvexLogger } from "./logger.ts";
 import { computeStateId, debounce, findUnusedPortSync, matchPattern } from "./utils.ts";
 
-// Create a Vite-style logger with [convex] prefix
-const logger: Logger = createLogger("info", { prefix: "[convex]" });
+// Create a logger with [convex] prefix
+const logger: ConvexLogger = createConvexLogger("info");
 
 // Track the running backend to handle Vite restarts.
 // When vite.config.ts changes, Vite recreates the plugin, orphaning the old backend.
@@ -426,11 +428,18 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
 export default convexLocal;
 
-// Re-export backend for advanced use cases
-export { ConvexBackend, type ConvexBackendOptions } from "./backend.ts";
-
-// Re-export key utilities for manual key generation
-export { generateInstanceSecret, generateAdminKey, generateKeyPair } from "./keys.ts";
+// Re-export from testing entrypoint for convenience
+export {
+  ConvexBackend,
+  type ConvexBackendOptions,
+  type ConvexLogger,
+  type LogLevel,
+  createConvexLogger,
+  normalizeLogger,
+  generateAdminKey,
+  generateInstanceSecret,
+  generateKeyPair,
+} from "./testing.ts";
 
 declare global {
   interface ImportMetaEnv {
