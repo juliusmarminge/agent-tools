@@ -1,6 +1,6 @@
 # agent-tools
 
-I made some tools to improve the agentic development for my current stack. Decided to publish some of them, idk if they're useful to anyone else. 
+I made some tools to improve the agentic development for my current stack. Decided to publish some of them, idk if they're useful to anyone else.
 
 Use on your own risk. Assume everything in this repo is fully vibe coded.
 
