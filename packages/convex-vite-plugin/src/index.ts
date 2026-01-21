@@ -201,7 +201,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       const errMsg = error instanceof Error ? error.message : String(error);
       logger.error(`Deploy failed: ${errMsg}`, {
         timestamp: true,
-        error: error instanceof Error ? error : undefined,
+        ...(error instanceof Error && { error }),
       });
     } finally {
       isDeploying = false;
