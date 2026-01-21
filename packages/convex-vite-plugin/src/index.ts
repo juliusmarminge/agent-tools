@@ -428,7 +428,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
 export default convexLocal;
 
-// Re-export from testing entrypoint for convenience
+// Re-export from lib entrypoint for convenience
 export {
   ConvexBackend,
   type ConvexBackendOptions,
@@ -439,7 +439,7 @@ export {
   generateAdminKey,
   generateInstanceSecret,
   generateKeyPair,
-} from "./testing.ts";
+} from "./lib.ts";
 
 declare global {
   interface ImportMetaEnv {
