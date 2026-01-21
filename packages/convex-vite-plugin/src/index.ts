@@ -198,7 +198,8 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       backend.deploy();
       logger.info("Deploy successful", { timestamp: true });
     } catch (error) {
-      logger.error(`Deploy failed:`, { timestamp: true, error: error as Error });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Deploy failed: ${errMsg}`, { timestamp: true, error: error as Error });
     } finally {
       isDeploying = false;
       if (pendingDeploy) {

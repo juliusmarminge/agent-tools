@@ -222,6 +222,8 @@ export class ConvexBackend {
 
     const backendUrl = `http://localhost:${this.port}`;
 
+    this.logger.info(`Running: bun convex deploy --url ${backendUrl}`, { timestamp: true });
+
     const deployResult = childProcess.spawnSync(
       "bun",
       ["convex", "deploy", "--admin-key", this.adminKey, "--url", backendUrl],
@@ -237,10 +239,15 @@ export class ConvexBackend {
       throw new Error(`Failed to spawn convex deploy: ${deployResult.error.message}`);
     }
 
+    // Log stderr (convex deploy writes progress to stderr)
+    const output = (deployResult.stdout + deployResult.stderr).trim();
+    if (output) {
+      this.logger.info(`Deploy output:\n${output}`, { timestamp: true });
+    }
+
     if (deployResult.status !== 0) {
-      throw new Error(
-        `Failed to deploy (exit code ${deployResult.status}):\n${deployResult.stdout + deployResult.stderr}`,
-      );
+      // Error details already logged above, just throw concise message
+      throw new Error(`Deploy failed with exit code ${deployResult.status}`);
     }
   }
 
