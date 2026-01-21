@@ -426,19 +426,6 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
 export default convexLocal;
 
-// Re-export from lib entrypoint for convenience
-export {
-  ConvexBackend,
-  type ConvexBackendOptions,
-  type ConvexLogger,
-  type LogLevel,
-  createConvexLogger,
-  normalizeLogger,
-  generateAdminKey,
-  generateInstanceSecret,
-  generateKeyPair,
-} from "./lib.ts";
-
 declare global {
   interface ImportMetaEnv {
     VITE_CONVEX_URL: string;
