@@ -199,7 +199,10 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       logger.info("Deploy successful", { timestamp: true });
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error(`Deploy failed: ${errMsg}`, { timestamp: true, error: error as Error });
+      logger.error(`Deploy failed: ${errMsg}`, {
+        timestamp: true,
+        error: error instanceof Error ? error : undefined,
+      });
     } finally {
       isDeploying = false;
       if (pendingDeploy) {
