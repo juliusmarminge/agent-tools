@@ -198,7 +198,11 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       backend.deploy();
       logger.info("Deploy successful", { timestamp: true });
     } catch (error) {
-      logger.error(`Deploy failed:`, { timestamp: true, error: error as Error });
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Deploy failed: ${errMsg}`, {
+        timestamp: true,
+        ...(error instanceof Error && { error }),
+      });
     } finally {
       isDeploying = false;
       if (pendingDeploy) {
@@ -393,9 +397,10 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                   await backend.runFunction(fn.name, fn.args ?? {});
                   logger.info(`${fn.name} completed`, { timestamp: true });
                 } catch (error) {
-                  logger.error(`Failed to run ${fn.name}:`, {
+                  const errMsg = error instanceof Error ? error.message : String(error);
+                  logger.error(`Failed to run ${fn.name}: ${errMsg}`, {
                     timestamp: true,
-                    error: error as Error,
+                    ...(error instanceof Error && { error }),
                   });
                 }
               }
