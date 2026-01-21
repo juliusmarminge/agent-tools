@@ -97,6 +97,14 @@ export class ConvexBackend {
   }
 
   /**
+   * Get the admin key for authenticating with the Convex backend.
+   * Use this to create your own ConvexClient with admin privileges.
+   */
+  public getAdminKey(): string {
+    return this.adminKey;
+  }
+
+  /**
    * Spawn the backend process.
    * Returns immediately after spawning - does not wait for the backend to be ready.
    * Call waitForReady() to ensure the backend is accepting connections.
