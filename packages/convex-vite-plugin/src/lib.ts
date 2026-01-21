@@ -21,12 +21,7 @@
 export { ConvexBackend, type ConvexBackendOptions } from "./backend.ts";
 
 // Logger exports
-export {
-  type ConvexLogger,
-  type LogLevel,
-  createConvexLogger,
-  normalizeLogger,
-} from "./logger.ts";
+export { type ConvexLogger, type LogLevel, createConvexLogger, normalizeLogger } from "./logger.ts";
 
 // Key generation utilities
 export { generateAdminKey, generateInstanceSecret, generateKeyPair } from "./keys.ts";

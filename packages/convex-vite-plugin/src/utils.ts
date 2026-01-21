@@ -1,11 +1,11 @@
-import type { ConvexLogger } from "./logger.ts";
-
 import * as ChildProcess from "node:child_process";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+
+import type { ConvexLogger } from "./logger.ts";
 
 /**
  * Compute a deterministic state ID based on git branch + working directory.
