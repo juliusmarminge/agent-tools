@@ -1,5 +1,11 @@
 # convex-vite-plugin
 
+## 0.3.2
+
+### Patch Changes
+
+- [#14](https://github.com/juliusmarminge/agent-tools/pull/14) [`751fb5d`](https://github.com/juliusmarminge/agent-tools/commit/751fb5d6afc5f9a19f76f4c598775ef56eae22c7) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - Remove hardcoded bun dependency from plugin. The plugin now detects the package manager (npm, yarn, pnpm, or bun) from the `npm_config_user_agent` environment variable and uses the appropriate exec command (npx, yarn exec, pnpm exec, or bunx).
+
 ## 0.3.1
 
 ### Patch Changes
