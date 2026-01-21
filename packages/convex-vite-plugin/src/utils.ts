@@ -7,6 +7,44 @@ import * as path from "node:path";
 
 import type { ConvexLogger } from "./logger.ts";
 
+export type PackageManager = "npm" | "yarn" | "pnpm" | "bun";
+
+/**
+ * Detect the package manager from npm_config_user_agent.
+ * Format: "<pm>/<version> node/<version> <os> <arch>"
+ * Examples:
+ *   - "npm/10.2.0 node/v20.9.0 darwin arm64"
+ *   - "yarn/4.0.0 npm/? node/v20.9.0 darwin arm64"
+ *   - "pnpm/8.10.0 npm/? node/v20.9.0 darwin arm64"
+ *   - "bun/1.0.0 node/v20.9.0 darwin arm64"
+ */
+export function detectPackageManager(): PackageManager {
+  const userAgent = process.env.npm_config_user_agent;
+  if (!userAgent) return "npm"; // Default fallback
+
+  if (userAgent.startsWith("bun/")) return "bun";
+  if (userAgent.startsWith("pnpm/")) return "pnpm";
+  if (userAgent.startsWith("yarn/")) return "yarn";
+  return "npm";
+}
+
+/**
+ * Get the command and args to execute a local binary.
+ */
+export function getExecCommand(pm: PackageManager): { cmd: string; args: string[] } {
+  switch (pm) {
+    case "bun":
+      return { cmd: "bunx", args: [] };
+    case "pnpm":
+      return { cmd: "pnpm", args: ["exec"] };
+    case "yarn":
+      return { cmd: "yarn", args: ["exec"] };
+    case "npm":
+    default:
+      return { cmd: "npx", args: [] };
+  }
+}
+
 /**
  * Compute a deterministic state ID based on git branch + working directory.
  * This allows the backend state to be reused across restarts.

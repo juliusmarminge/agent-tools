@@ -10,7 +10,12 @@ import type { ConvexLogger, LogLevel } from "./logger.ts";
 
 import { generateKeyPair } from "./keys.ts";
 import { normalizeLogger } from "./logger.ts";
-import { downloadConvexBinary, waitForHttpOk } from "./utils.ts";
+import {
+  detectPackageManager,
+  downloadConvexBinary,
+  getExecCommand,
+  waitForHttpOk,
+} from "./utils.ts";
 
 /**
  * Options for creating a ConvexBackend instance.
@@ -222,9 +227,12 @@ export class ConvexBackend {
 
     const backendUrl = `http://localhost:${this.port}`;
 
+    const pm = detectPackageManager();
+    const { cmd, args } = getExecCommand(pm);
+
     const deployResult = childProcess.spawnSync(
-      "bun",
-      ["convex", "deploy", "--admin-key", this.adminKey, "--url", backendUrl],
+      cmd,
+      [...args, "convex", "deploy", "--admin-key", this.adminKey, "--url", backendUrl],
       {
         cwd: this.projectDir,
         encoding: "utf-8",
