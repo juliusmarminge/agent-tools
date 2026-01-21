@@ -1,5 +1,11 @@
 # convex-vite-plugin
 
+## 0.2.0
+
+### Minor Changes
+
+- [#6](https://github.com/juliusmarminge/agent-tools/pull/6) [`34d1a15`](https://github.com/juliusmarminge/agent-tools/commit/34d1a15a900685902df169fb10e8e385d278ea9e) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - Add `getAdminKey()` method to `ConvexBackend` class for creating custom authenticated clients
+
 ## 0.1.0
 
 ### Minor Changes
