@@ -5,7 +5,6 @@
 ### Minor Changes
 
 - [#8](https://github.com/juliusmarminge/agent-tools/pull/8) [`9db4c1e`](https://github.com/juliusmarminge/agent-tools/commit/9db4c1eb42da4e27670960be2c58026aab1c39cf) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - Add custom logger interface and `/lib` entrypoint
-
   - Added `ConvexLogger` interface and `LogLevel` type for flexible logging configuration
   - `ConvexBackend` constructor now accepts optional `logger?: ConvexLogger | LogLevel` parameter
   - Added `createConvexLogger()` factory function for creating loggers with configurable levels
