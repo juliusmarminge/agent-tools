@@ -398,7 +398,10 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                   logger.info(`${fn.name} completed`, { timestamp: true });
                 } catch (error) {
                   const errMsg = error instanceof Error ? error.message : String(error);
-                  logger.error(`Failed to run ${fn.name}: ${errMsg}`, { timestamp: true });
+                  logger.error(`Failed to run ${fn.name}: ${errMsg}`, {
+                    timestamp: true,
+                    ...(error instanceof Error && { error }),
+                  });
                 }
               }
             }
