@@ -1,4 +1,4 @@
-import type { Logger, Plugin, ViteDevServer } from "vite";
+import type { Logger, Plugin, ResolvedServerUrls, ViteDevServer } from "vite";
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -82,11 +82,14 @@ export interface ConvexLocalOptions {
   reset?: boolean | undefined;
   /**
    * Environment variables to set on the backend.
-   * Can be a static object or a function that receives the Vite port.
+   * Can be a static object or a function that receives info about the Vite dev server.
    */
   envVars?:
     | Record<string, string>
-    | ((vitePort: number) => Record<string, string> | Promise<Record<string, string>>)
+    | ((info: {
+        vitePort: number;
+        resolvedUrls: ResolvedServerUrls | null;
+      }) => Record<string, string> | Promise<Record<string, string>>)
     | undefined;
   /** File watching configuration */
   watch?:
@@ -297,7 +300,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       server.watcher.on("unlink", handleFileChange);
 
       // Start backend initialization asynchronously (doesn't block Vite)
-      const startBackendInit = (vitePort: number) => {
+      const startBackendInit = (vitePort: number, resolvedUrls: ResolvedServerUrls | null) => {
         void (async () => {
           try {
             const keysPath = path.join(backendDir, "keys.json");
@@ -374,7 +377,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
             if (options.envVars) {
               const envVars =
                 typeof options.envVars === "function"
-                  ? await options.envVars(vitePort)
+                  ? await options.envVars({ vitePort, resolvedUrls })
                   : options.envVars;
 
               for (const [name, value] of Object.entries(envVars)) {
@@ -423,7 +426,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
           address && typeof address === "object"
             ? address.port
             : (server.config.server.port ?? 5173);
-        startBackendInit(vitePort);
+        startBackendInit(vitePort, server.resolvedUrls);
       }, BACKEND_INIT_DELAY_MS);
     },
   };
