@@ -1,5 +1,23 @@
 # convex-vite-plugin
 
+## 0.4.0
+
+### Minor Changes
+
+- [#17](https://github.com/juliusmarminge/agent-tools/pull/17) [`55aa857`](https://github.com/juliusmarminge/agent-tools/commit/55aa857197533f1927d080f11123cddef43805cb) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - **BREAKING:** The `envVars` callback signature changed from `(vitePort: number)` to `({ vitePort, resolvedUrls })`. This provides access to Vite's full `ResolvedServerUrls` object which includes both local and network URLs.
+
+  Migration:
+
+  ```diff
+  convexLocal({
+  -  envVars: (vitePort) => ({
+  -    SITE_URL: `http://localhost:${vitePort}`,
+  +  envVars: ({ vitePort, resolvedUrls }) => ({
+  +    SITE_URL: resolvedUrls?.local[0] ?? `http://localhost:${vitePort}`,
+    }),
+  })
+  ```
+
 ## 0.3.2
 
 ### Patch Changes
