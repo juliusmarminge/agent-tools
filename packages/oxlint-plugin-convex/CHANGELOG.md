@@ -1,5 +1,11 @@
 # oxlint-plugin-convex
 
+## 0.1.1
+
+### Patch Changes
+
+- [#20](https://github.com/juliusmarminge/agent-tools/pull/20) [`547686f`](https://github.com/juliusmarminge/agent-tools/commit/547686f7755f5dc5ae019a390390afd7975e82db) Thanks [@juliusmarminge](https://github.com/juliusmarminge)! - Accept `internal.x.y` references alongside `api.x.y` when detecting unused Convex functions
+
 ## 0.1.0
 
 ### Minor Changes
