@@ -1,7 +1,7 @@
 /**
  * Oxlint plugin to detect unused Convex functions.
  *
- * A Convex function is considered unused if nothing references it via `api.path.to.function`.
+ * A Convex function is considered unused if nothing references it via `api.path.to.function` or `internal.path.to.function`.
  *
  * @example
  * ```json
@@ -117,10 +117,10 @@ function getProjectFiles(
 }
 
 /**
- * Extract all `api.x.y.z` usages from file content.
+ * Extract all `api.x.y.z` and `internal.x.y.z` usages from file content.
  */
 function extractApiUsages(content: string): Set<string> {
-  const USAGE_PATTERN = /\bapi\.([\w.]+)/g;
+  const USAGE_PATTERN = /\b(?:api|internal)\.([\w.]+)/g;
   const usages = new Set<string>();
   let match: RegExpExecArray | null = null;
   while ((match = USAGE_PATTERN.exec(content)) !== null) {
@@ -169,7 +169,7 @@ function isConvexFunctionCall(callExpr: { arguments: unknown[] }): boolean {
 
 /**
  * Rule that detects unused Convex functions.
- * A function is considered unused if no file references it via `api.module.function`.
+ * A function is considered unused if no file references it via `api.module.function` or `internal.module.function`.
  */
 export const noUnusedFunctionsRule = defineRule({
   meta: {
