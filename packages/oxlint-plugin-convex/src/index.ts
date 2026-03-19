@@ -86,7 +86,7 @@ export type RuleOptions = {
 /**
  * Get all project files with the given extensions, excluding common directories.
  */
-const DEFAULT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
+const DEFAULT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".svelte", ".vue"];
 const DEFAULT_SKIP_DIRS = [
   "node_modules",
   ".git",
