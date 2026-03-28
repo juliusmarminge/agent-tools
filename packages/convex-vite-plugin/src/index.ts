@@ -382,7 +382,11 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
               for (const [name, value] of Object.entries(envVars)) {
                 await backend.setEnv(name, value);
-                logger.info(`Set environment variable: ${name} = ${value}`, { timestamp: true });
+                const masked =
+                  value.length > 4
+                    ? value.slice(0, 2) + "·".repeat(Math.min(value.length - 2, 5))
+                    : "····";
+                logger.info(`Set environment variable: ${name} = ${masked}`, { timestamp: true });
               }
             }
 
