@@ -125,12 +125,34 @@ function isPortAvailableSync(port: number): boolean {
 }
 
 /**
+ * WHATWG fetch "bad port" list. Node's fetch (undici) refuses to connect to
+ * these ports, so a backend that binds one is unreachable: the plugin's own
+ * /version health check and any consumer proxying to the backend both fail
+ * with `TypeError: fetch failed` / cause `bad port`, even though the port was
+ * free to bind. https://fetch.spec.whatwg.org/#port-blocking
+ */
+const BAD_FETCH_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
+  87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137,
+  139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532,
+  540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723,
+  2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669,
+  6679, 6697, 10080,
+]);
+
+/**
  * Find an unused port synchronously, starting from a given port.
  * Useful for Vite plugin initialization where async is not allowed.
+ * Skips ports the fetch spec blocks, so the chosen port stays reachable.
+ * Blocked ports do not count toward maxAttempts, so the limit always
+ * reflects how many connectable ports were actually probed.
  */
 export function findUnusedPortSync(startPort = 10000, maxAttempts = 100): number {
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const port = startPort + attempt;
+  let checked = 0;
+  for (let offset = 0; checked < maxAttempts; offset++) {
+    const port = startPort + offset;
+    if (BAD_FETCH_PORTS.has(port)) continue;
+    checked++;
     if (isPortAvailableSync(port)) {
       return port;
     }
