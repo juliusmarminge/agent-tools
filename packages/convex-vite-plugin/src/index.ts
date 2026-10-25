@@ -16,6 +16,10 @@ const logger: Logger = createLogger("info", { prefix: "[convex]" });
 // This module-level variable lets us find and stop it before starting a new one.
 let runningBackend: ConvexBackend | null = null;
 
+// Backends a restart is killing. Their startup stops at its next step instead of
+// calling into, or reporting, a backend that is gone.
+const killedBackends = new WeakSet<ConvexBackend>();
+
 // Delay before starting backend initialization to let Vite complete its internal setup.
 // This is necessary because Vite's restart mechanism can leave the server in a transitional
 // state where httpServer references the OLD server being shut down.
@@ -240,6 +244,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       // Defer killing the old backend to avoid blocking Vite's config phase
       if (runningBackend?.process?.pid) {
         const pid = runningBackend.process.pid;
+        killedBackends.add(runningBackend);
         runningBackend = null;
         // Kill async via setImmediate to not block config()
         setImmediate(() => {
@@ -302,6 +307,9 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
       // Start backend initialization asynchronously (doesn't block Vite)
       const startBackendInit = (vitePort: number, resolvedUrls: ResolvedServerUrls | null) => {
         void (async () => {
+          let startedBackend: ConvexBackend | null = null;
+          const wasKilled = (): boolean =>
+            startedBackend !== null && killedBackends.has(startedBackend);
           try {
             const keysPath = path.join(backendDir, "keys.json");
             const stateExists = fs.existsSync(backendDir);
@@ -369,6 +377,7 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
 
             await backend.spawn(backendDir);
             runningBackend = backend;
+            startedBackend = backend;
 
             // Wait for backend to be ready before making API calls
             await backend.waitForReady();
@@ -381,10 +390,13 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                   : options.envVars;
 
               for (const [name, value] of Object.entries(envVars)) {
+                if (wasKilled()) return;
                 await backend.setEnv(name, value);
                 logger.info(`Set environment variable: ${name} = ${value}`, { timestamp: true });
               }
             }
+
+            if (wasKilled()) return;
 
             // Initial deploy
             deploy();
@@ -395,11 +407,13 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
                 timestamp: true,
               });
               for (const fn of options.onReady) {
+                if (wasKilled()) return;
                 try {
                   logger.info(`Running ${fn.name}...`, { timestamp: true });
                   await backend.runFunction(fn.name, fn.args ?? {});
                   logger.info(`${fn.name} completed`, { timestamp: true });
                 } catch (error) {
+                  if (wasKilled()) return;
                   const errMsg = error instanceof Error ? error.message : String(error);
                   logger.error(`Failed to run ${fn.name}: ${errMsg}`, {
                     timestamp: true,
@@ -409,9 +423,11 @@ export function convexLocal(options: ConvexLocalOptions = {}): Plugin {
               }
             }
 
+            if (wasKilled()) return;
             const backendUrl = `http://localhost:${backend.port}`;
             logger.info(`Backend ready at ${backendUrl}`, { timestamp: true });
           } catch (error) {
+            if (wasKilled()) return;
             logger.error(`Backend initialization failed: ${String(error)}`, { timestamp: true });
           }
         })();
