@@ -181,9 +181,48 @@ export function onProcessExit(handler: () => Promise<void>): void {
   });
 }
 
+interface ReleaseAsset {
+  name: string;
+  /** REST endpoint that serves the bytes for `Accept: application/octet-stream`. */
+  url: string;
+  browser_download_url: string;
+  /** `sha256:<hex>`, or null for assets GitHub has no digest for. */
+  digest?: string | null;
+}
+
 interface GitHubRelease {
   tag_name: string;
-  assets: Array<{ name: string; browser_download_url: string }>;
+  assets: ReleaseAsset[];
+}
+
+// 429 is not retried: GitHub asks clients to wait out Retry-After or the
+// rate-limit reset, which outlasts the 1 s and 2 s backoff.
+const TRANSIENT_DOWNLOAD_STATUSES = new Set([408, 409]);
+const DOWNLOAD_MAX_ATTEMPTS = 3;
+
+class DownloadHttpError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+class ArchiveValidationError extends Error {}
+
+function isTransientDownloadStatus(status: number): boolean {
+  return TRANSIENT_DOWNLOAD_STATUSES.has(status) || status >= 500;
+}
+
+function isTransientDownloadError(error: unknown): boolean {
+  return error instanceof DownloadHttpError
+    ? isTransientDownloadStatus(error.status)
+    : error instanceof TypeError;
+}
+
+async function waitForDownloadRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, attempt * 1_000));
 }
 
 async function fetchConvexReleases(): Promise<GitHubRelease[]> {
@@ -195,12 +234,24 @@ async function fetchConvexReleases(): Promise<GitHubRelease[]> {
     headers["Authorization"] = `Bearer ${githubToken}`;
   }
 
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch releases: ${response.status}`);
+  for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new DownloadHttpError(
+          `Failed to fetch releases: ${response.status}`,
+          response.status,
+        );
+      }
+      // Awaited here so a body that fails mid-read is retried too.
+      return await response.json();
+    } catch (error) {
+      if (!isTransientDownloadError(error) || attempt === DOWNLOAD_MAX_ATTEMPTS) throw error;
+      await waitForDownloadRetry(attempt);
+    }
   }
 
-  return response.json();
+  throw new Error("Convex release download retry exhausted");
 }
 
 function getPlatformTarget(): string {
@@ -219,7 +270,7 @@ function findAsset(
   target: string,
   version?: string,
 ): {
-  asset: { name: string; browser_download_url: string };
+  asset: ReleaseAsset;
   version: string;
 } {
   // If a specific version is requested, find that release
@@ -243,18 +294,64 @@ function findAsset(
   throw new Error(`No Convex binary asset matches '${target}'`);
 }
 
-async function downloadFile(url: string, destPath: string): Promise<void> {
-  const response = await fetch(url, {
-    headers: { "User-Agent": "node" },
-    redirect: "follow",
-  });
+function isRateLimitExhausted(response: Response): boolean {
+  return (
+    (response.status === 403 || response.status === 429) &&
+    response.headers.get("x-ratelimit-remaining") === "0"
+  );
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
+// The anonymous github.com download link has answered 503 and 504 for hours
+// while the REST asset endpoint kept serving, so the bytes come from the API.
+// The API redirects to a signed objects host, and fetch drops Authorization on
+// that cross-origin hop. Once the API's hourly quota is spent, `route` records
+// it, and this and every later attempt use the github.com link, which that
+// quota does not cover.
+async function downloadFile(
+  asset: ReleaseAsset,
+  destPath: string,
+  route: { apiExhausted: boolean },
+): Promise<void> {
+  const headers: Record<string, string> = {
+    Accept: "application/octet-stream",
+    "User-Agent": "node",
+  };
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (githubToken) {
+    headers["Authorization"] = `Bearer ${githubToken}`;
   }
 
-  const buffer = await response.arrayBuffer();
-  await fsp.writeFile(destPath, Buffer.from(buffer));
+  let url = asset.url;
+  let response: Response | undefined;
+  if (!route.apiExhausted) {
+    response = await fetch(url, { headers, redirect: "follow" });
+    if (isRateLimitExhausted(response)) {
+      await response.body?.cancel();
+      route.apiExhausted = true;
+      response = undefined;
+    }
+  }
+  if (!response) {
+    url = asset.browser_download_url;
+    response = await fetch(url, { headers: { "User-Agent": "node" }, redirect: "follow" });
+  }
+  if (!response.ok) {
+    throw new DownloadHttpError(
+      `Failed to download ${url}: ${response.status} ${response.statusText}`,
+      response.status,
+    );
+  }
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (asset.digest) {
+    const actual = `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}`;
+    if (actual !== asset.digest.toLowerCase()) {
+      throw new ArchiveValidationError(
+        `${asset.name} has digest ${actual}, expected ${asset.digest}`,
+      );
+    }
+  }
+  await fsp.writeFile(destPath, bytes);
 }
 
 function extractZip(zipPath: string, destDir: string): Promise<void> {
@@ -266,7 +363,7 @@ function extractZip(zipPath: string, destDir: string): Promise<void> {
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(`Failed to extract ${zipPath} (exit code ${code})`));
+          reject(new ArchiveValidationError(`Failed to extract ${zipPath} (exit code ${code})`));
         }
       });
   });
@@ -385,16 +482,45 @@ export async function downloadConvexBinary(
     return binaryPath;
   }
 
-  const zipPath = path.join(binaryDir, asset.name);
   logger.info(`Downloading Convex backend ${version}...`, { timestamp: true });
-  await downloadFile(asset.browser_download_url, zipPath);
-  logger.info(`Downloaded: ${asset.name}`, { timestamp: true });
 
-  await extractZip(zipPath, binaryDir);
-  const extracted = path.join(binaryDir, `convex-local-backend${isWindows ? ".exe" : ""}`);
-  await fsp.rename(extracted, binaryPath);
-  if (!isWindows) fs.chmodSync(binaryPath, 0o755);
-  await fsp.rm(zipPath);
-  logger.info(`Binary ready at: ${binaryPath}`, { timestamp: true });
-  return binaryPath;
+  const route = { apiExhausted: false };
+  for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
+    const attemptId = `${process.pid}-${crypto.randomUUID()}`;
+    const zipPath = path.join(binaryDir, `${asset.name}.${attemptId}.tmp`);
+    const extractDir = path.join(binaryDir, `.extract-${attemptId}`);
+
+    try {
+      await fsp.mkdir(extractDir, { recursive: true });
+      await downloadFile(asset, zipPath, route);
+      await extractZip(zipPath, extractDir);
+      const extracted = path.join(extractDir, `convex-local-backend${isWindows ? ".exe" : ""}`);
+      const extractedStat = await fsp.stat(extracted).catch(() => null);
+      if (!extractedStat?.isFile()) {
+        throw new ArchiveValidationError(`Archive does not contain ${path.basename(extracted)}`);
+      }
+      if (!isWindows) await fsp.chmod(extracted, 0o755);
+
+      try {
+        await fsp.rename(extracted, binaryPath);
+      } catch (error) {
+        const published = await fsp.stat(binaryPath).catch(() => null);
+        if (!published?.isFile()) throw error;
+      }
+
+      logger.info(`Binary ready at: ${binaryPath}`, { timestamp: true });
+      return binaryPath;
+    } catch (error) {
+      const retryable = error instanceof ArchiveValidationError || isTransientDownloadError(error);
+      if (!retryable || attempt === DOWNLOAD_MAX_ATTEMPTS) throw error;
+      await waitForDownloadRetry(attempt);
+    } finally {
+      await Promise.all([
+        fsp.rm(zipPath, { force: true }).catch(() => {}),
+        fsp.rm(extractDir, { recursive: true, force: true }).catch(() => {}),
+      ]);
+    }
+  }
+
+  throw new Error("Convex binary download retry exhausted");
 }
