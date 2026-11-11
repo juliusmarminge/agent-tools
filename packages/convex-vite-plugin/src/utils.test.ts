@@ -173,6 +173,43 @@ describe.skipIf(process.platform === "win32")("convex-vite-plugin binary downloa
     expect(new Headers(requests[2].init?.headers).has("authorization")).toBe(false);
   });
 
+  it("keeps later attempts on the browser link once the API rate limit is spent", async () => {
+    immediateTimeouts();
+    process.env.GITHUB_TOKEN = "test-token";
+    const root = temporaryRoot();
+    const archive = executableZip(root);
+    const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+    let browserAttempts = 0;
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation((input, init) => {
+      const url = requestUrl(input);
+      requests.push({ url, init });
+      if (url === assetApiUrl) {
+        return Promise.resolve(
+          new Response("rate limited", {
+            status: 429,
+            headers: { "x-ratelimit-remaining": "0" },
+          }),
+        );
+      }
+      if (url === browserDownloadUrl) {
+        browserAttempts++;
+        return Promise.resolve(
+          browserAttempts === 1
+            ? new Response("busy", { status: 503 })
+            : new Response(archive, { status: 200 }),
+        );
+      }
+      return Promise.resolve(releasesResponse());
+    });
+    expect(fs.existsSync(await acquire(root, fetchImpl))).toBe(true);
+    expect(requests.map((request) => request.url).slice(1)).toEqual([
+      assetApiUrl,
+      browserDownloadUrl,
+      browserDownloadUrl,
+    ]);
+    expect(new Headers(requests[3].init?.headers).has("authorization")).toBe(false);
+  });
+
   it("fails fast for a 403 asset response with rate limit left", async () => {
     const root = temporaryRoot();
     const fetchImpl = vi

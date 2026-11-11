@@ -304,9 +304,14 @@ function isRateLimitExhausted(response: Response): boolean {
 // The anonymous github.com download link has answered 503 and 504 for hours
 // while the REST asset endpoint kept serving, so the bytes come from the API.
 // The API redirects to a signed objects host, and fetch drops Authorization on
-// that cross-origin hop. Once the API's hourly quota is spent, this attempt
-// falls back to the github.com link, which that quota does not cover.
-async function downloadFile(asset: ReleaseAsset, destPath: string): Promise<void> {
+// that cross-origin hop. Once the API's hourly quota is spent, `route` records
+// it, and this and every later attempt use the github.com link, which that
+// quota does not cover.
+async function downloadFile(
+  asset: ReleaseAsset,
+  destPath: string,
+  route: { apiExhausted: boolean },
+): Promise<void> {
   const headers: Record<string, string> = {
     Accept: "application/octet-stream",
     "User-Agent": "node",
@@ -317,9 +322,16 @@ async function downloadFile(asset: ReleaseAsset, destPath: string): Promise<void
   }
 
   let url = asset.url;
-  let response = await fetch(url, { headers, redirect: "follow" });
-  if (isRateLimitExhausted(response)) {
-    await response.body?.cancel();
+  let response: Response | undefined;
+  if (!route.apiExhausted) {
+    response = await fetch(url, { headers, redirect: "follow" });
+    if (isRateLimitExhausted(response)) {
+      await response.body?.cancel();
+      route.apiExhausted = true;
+      response = undefined;
+    }
+  }
+  if (!response) {
     url = asset.browser_download_url;
     response = await fetch(url, { headers: { "User-Agent": "node" }, redirect: "follow" });
   }
@@ -472,6 +484,7 @@ export async function downloadConvexBinary(
 
   logger.info(`Downloading Convex backend ${version}...`, { timestamp: true });
 
+  const route = { apiExhausted: false };
   for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
     const attemptId = `${process.pid}-${crypto.randomUUID()}`;
     const zipPath = path.join(binaryDir, `${asset.name}.${attemptId}.tmp`);
@@ -479,7 +492,7 @@ export async function downloadConvexBinary(
 
     try {
       await fsp.mkdir(extractDir, { recursive: true });
-      await downloadFile(asset, zipPath);
+      await downloadFile(asset, zipPath, route);
       await extractZip(zipPath, extractDir);
       const extracted = path.join(extractDir, `convex-local-backend${isWindows ? ".exe" : ""}`);
       const extractedStat = await fsp.stat(extracted).catch(() => null);
