@@ -2,4 +2,4 @@
 "convex-vite-plugin": patch
 ---
 
-Download the local backend through GitHub's release API, verify its SHA-256 digest, and retry transient GitHub and archive failures.
+Download the local backend through GitHub's release API, verify its SHA-256 digest, and retry transient GitHub and archive failures. A rate-limited response is not retried.

@@ -190,6 +190,8 @@ Keys are auto-generated and persisted across restarts. Only provide these if you
 | `binaryCacheDir` | `string` | `~/.convex-local-backend/releases` | Directory to cache the Convex binary                                        |
 | `binaryCacheTtl` | `number` | `604800000` (7 days)               | How long to use cached binary before checking for updates (ms)              |
 
+The binary comes from GitHub's release API. Set `GITHUB_TOKEN` to raise its rate limit; downloads also work without it.
+
 ### Using ConvexBackend Directly
 
 For advanced use cases, you can import and use the `ConvexBackend` class directly:

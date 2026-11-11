@@ -195,7 +195,9 @@ interface GitHubRelease {
   assets: ReleaseAsset[];
 }
 
-const TRANSIENT_DOWNLOAD_STATUSES = new Set([408, 409, 429]);
+// 429 is not retried: GitHub asks clients to wait out Retry-After or the
+// rate-limit reset, which outlasts the 1 s and 2 s backoff.
+const TRANSIENT_DOWNLOAD_STATUSES = new Set([408, 409]);
 const DOWNLOAD_MAX_ATTEMPTS = 3;
 
 class DownloadHttpError extends Error {

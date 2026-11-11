@@ -189,6 +189,26 @@ describe.skipIf(process.platform === "win32")("convex-vite-plugin binary downloa
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("fails without retrying during a secondary rate limit", async () => {
+    const timeouts = immediateTimeouts();
+    const root = temporaryRoot();
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(releasesResponse())
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response("slow down", {
+            status: 429,
+            statusText: "Too Many Requests",
+            headers: { "retry-after": "30", "x-ratelimit-remaining": "42" },
+          }),
+        ),
+      );
+    await expect(acquire(root, fetchImpl)).rejects.toThrow("429 Too Many Requests");
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(timeouts).not.toHaveBeenCalled();
+  });
+
   it("publishes an archive whose digest matches the release", async () => {
     const root = temporaryRoot();
     const archive = executableZip(root);
